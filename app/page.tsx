@@ -230,7 +230,7 @@ export default function Home() {
   async function loadProfile(userId: string) {
     if (!supabase) return;
     const { data } = await supabase.from("profiles").select("id,public_id,display_name").eq("id", userId).maybeSingle();
-    if (data) { setProfile(data as Profile); await loadChats(userId); try { await ensureDeviceKey(supabase, userId); } catch (e) { console.error("Secure device setup failed", e); } }
+    if (data) { setProfile(data as Profile); try { await ensureDeviceKey(supabase, userId); } catch (e) { console.error("Secure device setup failed", e); } await loadChats(userId); }
   }
 
   async function loadChats(userId: string) {
@@ -531,7 +531,7 @@ export default function Home() {
     }
     const target = data as Profile;
     if (!mobileChatOpen) window.history.pushState({ chatAppView: "chat" }, "", window.location.href);
-    setSelectedChat({ id: conversationId as string, other: target, last_message_at: new Date().toISOString() });
+    setSelectedChat({ id: conversationId as string, other: target, last_message_at: new Date().toISOString(), last_message_preview: "No messages yet", unread_count: 0 });
     setMobileChatOpen(true);
     setSearch("");
     setSearchNotice("");
