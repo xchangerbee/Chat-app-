@@ -95,7 +95,10 @@ export default function Home() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedChat, setSelectedChat] = useState<ChatItem | null>(null);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
-  const [searching, setSearching] = useState(false);\n  const [messages, setMessages] = useState<MessageItem[]>([]);\n  const [draft, setDraft] = useState("");\n  const [sending, setSending] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [messages, setMessages] = useState<MessageItem[]>([]);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
 
