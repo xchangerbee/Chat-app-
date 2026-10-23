@@ -112,7 +112,8 @@ export default function Home() {
   const [searchNotice, setSearchNotice] = useState("");
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [messageReceipts, setMessageReceipts] = useState<Record<string, { delivered_at: string | null; seen_at: string | null }>>({});
-  const [draft, setDraft] = useState("");
+  const [draftsByChat, setDraftsByChat] = useState<Record<string, string>>({});
+  const draft = selectedChat ? (draftsByChat[selectedChat.id] || "") : "";
   const [sending, setSending] = useState(false);
   const settingsOpenRef = useRef(settingsOpen);
   const mobileChatOpenRef = useRef(mobileChatOpen);
@@ -464,7 +465,7 @@ export default function Home() {
       const encrypted = await encryptMessage(supabase, profile.id, selectedChat.other.id, text);
       const { data, error } = await supabase.from("messages").insert({ conversation_id: selectedChat.id, sender_id: profile.id, ciphertext: encrypted.ciphertext, nonce: encrypted.nonce, key_version: 1 }).select("id,conversation_id,sender_id,ciphertext,nonce,created_at").single();
       if (error) throw error;
-      setDraft("");
+      setDraftsByChat(current => ({ ...current, [selectedChat.id]: "" }));
       const sentMessage = { ...(data as MessageItem), text };
       setMessages(current => [...current, sentMessage]);
       await loadChats(profile.id);
@@ -604,7 +605,7 @@ export default function Home() {
           {messages.length ? messages.map(message => <div key={message.id} className={"message-line " + (message.sender_id === profile.id ? "mine" : "theirs")}><div className="message-bubble">{message.text || "Decrypting…"}</div><span className="message-meta">{new Date(message.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}{message.sender_id === profile.id ? " · " + (messageReceipts[message.id]?.seen_at ? "Seen" : messageReceipts[message.id]?.delivered_at ? "Delivered" : "Sent") : ""}</span></div>) : <div className="chat-placeholder"><div className="welcome-icon"><LockKeyhole size={28}/></div><h3 style={{fontFamily:"Manrope",color:"#263047"}}>Start your conversation</h3><p>Your conversations are kept private on this device. Keep this browser’s data safe so you can continue accessing your messages.</p></div>}
         </div>
         {notice && <div className={"notice " + (isError ? "error" : "")} style={{margin:"0 20px 10px"}}>{notice}</div>}
-        <form className="composer" onSubmit={sendMessage}><div className="composer-inner active"><textarea aria-label="Message" value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Write a secure message…" maxLength={4000} rows={1}/><button className="send-btn" type="submit" disabled={!draft.trim() || sending} aria-label="Send message">{sending ? "…" : <ArrowRight size={18}/>}</button></div><div className="composer-foot"><LockKeyhole size={12}/> Your privacy matters · Never share your PIN</div></form>
+        <form className="composer" onSubmit={sendMessage}><div className="composer-inner active"><textarea aria-label="Message" value={draft} onChange={e=>{const value=e.target.value;if(selectedChat)setDraftsByChat(current=>({...current,[selectedChat.id]:value}));}} placeholder="Write a secure message…" maxLength={4000} rows={1}/><button className="send-btn" type="submit" disabled={!draft.trim() || sending} aria-label="Send message">{sending ? "…" : <ArrowRight size={18}/>}</button></div><div className="composer-foot"><LockKeyhole size={12}/> Your privacy matters · Never share your PIN</div></form>
       </div> : <div className="content-center"><div className="welcome-card"><div className="welcome-icon"><Sparkles size={30}/></div><h2>Your space, your people.</h2><p>Start a private one-to-one conversation by searching for a teammate using their 4-digit user ID.</p><button className="small-primary" onClick={()=>document.querySelector<HTMLInputElement>(".search-wrap input")?.focus()}><Plus size={15} style={{display:"inline",verticalAlign:"-3px",marginRight:6}}/>Find a teammate</button><div style={{display:"flex",justifyContent:"center",gap:18,marginTop:28,color:"#9aa2b3",fontSize:11}}><span><ShieldCheck size={13} style={{display:"inline",verticalAlign:"-3px",marginRight:4}}/>Your privacy comes first</span><span><Users size={13} style={{display:"inline",verticalAlign:"-3px",marginRight:4}}/>Just you and one teammate</span></div></div></div>}
     </section>
     
