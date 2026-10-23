@@ -132,6 +132,16 @@ export default function Home() {
   }, [theme]);
 
   useEffect(() => {
+    if (!settingsOpen) return;
+    const closeSettingsOnOutsidePress = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && !target.closest(".side-bottom")) setSettingsOpen(false);
+    };
+    document.addEventListener("pointerdown", closeSettingsOnOutsidePress);
+    return () => document.removeEventListener("pointerdown", closeSettingsOnOutsidePress);
+  }, [settingsOpen]);
+
+  useEffect(() => {
     if (!searchNotice) return;
     const timeoutId = window.setTimeout(() => setSearchNotice(""), 3500);
     return () => window.clearTimeout(timeoutId);
@@ -426,7 +436,7 @@ export default function Home() {
       {searchNotice && <div className="notice error" role="status" aria-live="polite" style={{marginTop:9,marginBottom:0}}>{searchNotice}</div>}
     </div><div className="section-label"><span>MESSAGES</span><span>{chats.length}</span></div>
       {chats.length ? <div className="chat-list">{chats.map(chat=><button className={"chat-row "+(selectedChat?.id===chat.id?"selected":"")} key={chat.id} onClick={()=>{setSelectedChat(chat);setMobileChatOpen(true);}}><div className="avatar">{chat.other.display_name.slice(0,1).toUpperCase()}</div><div className="chat-info"><div className="chat-name-line"><span className="chat-name">{chat.other.display_name}</span><span className="chat-time">{new Date(chat.last_message_at).toLocaleDateString()}</span></div><div className="chat-preview">Open conversation</div></div></button>)}</div> : <div className="empty-list"><MessageCircle size={20} style={{margin:"0 auto 9px",opacity:.6}}/><div>No conversations yet</div><div>Search a teammate by their 4-digit ID to start chatting.</div></div>}
-      <div className="side-bottom"><div className="profile-mini"><div className="avatar">{profile.display_name.slice(0,1).toUpperCase()}</div><div className="profile-copy"><strong>{profile.display_name}</strong><span>Your ID · {profile.public_id}</span></div><button className="icon-btn" title="Account settings" aria-label="Account settings" onClick={()=>setSettingsOpen(!settingsOpen)}><Settings size={17}/></button></div></div>
+      <div className={"side-bottom" + (settingsOpen ? " settings-expanded" : "")}>{settingsOpen && <section className="settings-pop settings-pop-inline" role="dialog" aria-label="Account settings" onClick={e=>e.stopPropagation()}><h3>Account settings</h3><p>{profile.display_name}<br/>Shareable user ID: <strong>{profile.public_id}</strong><br/>Keep your 6-digit PIN private.</p><button onClick={()=>void logout()}><LogOut size={14} style={{display:"inline",verticalAlign:"-3px",marginRight:6}}/>Sign out</button></section>}<div className="profile-mini"><div className="avatar">{profile.display_name.slice(0,1).toUpperCase()}</div><div className="profile-copy"><strong>{profile.display_name}</strong><span>Your ID · {profile.public_id}</span></div><button className="icon-btn" title="Account settings" aria-label="Account settings" aria-expanded={settingsOpen} onClick={()=>setSettingsOpen(open=>!open)}><Settings size={17}/></button></div></div>
     </aside>
     <section className="main-panel"><header className="main-top"><div style={{display:"flex",alignItems:"center",gap:11}}>{selectedChat && <button className="icon-btn back-btn" onClick={()=>{setSelectedChat(null);setMobileChatOpen(false);}}><ArrowLeft size={17}/></button>}<div><div className="top-title">{selectedChat ? selectedChat.other.display_name : "Your conversations"}</div><div className="top-sub">{selectedChat ? "User ID · "+selectedChat.other.public_id : "A little more focus, a little less noise."}</div></div></div><div className="top-actions"><div className="online-pill"><span className="online-dot"></span> Private workspace</div><button className="icon-btn" title="Help and privacy"><ShieldCheck size={17}/></button></div></header>
       {selectedChat ? <div className="chat-view">
@@ -437,6 +447,6 @@ export default function Home() {
         <form className="composer" onSubmit={sendMessage}><div className="composer-inner active"><textarea aria-label="Message" value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Write a secure message…" maxLength={4000} rows={1}/><button className="send-btn" type="submit" disabled={!draft.trim() || sending} aria-label="Send message">{sending ? "…" : <ArrowRight size={18}/>}</button></div><div className="composer-foot"><LockKeyhole size={12}/> Encrypted on this device · Never share your PIN</div></form>
       </div> : <div className="content-center"><div className="welcome-card"><div className="welcome-icon"><Sparkles size={30}/></div><h2>Your space, your people.</h2><p>Start a private one-to-one conversation by searching for a teammate using their 4-digit user ID.</p><button className="small-primary" onClick={()=>document.querySelector<HTMLInputElement>(".search-wrap input")?.focus()}><Plus size={15} style={{display:"inline",verticalAlign:"-3px",marginRight:6}}/>Find a teammate</button><div style={{display:"flex",justifyContent:"center",gap:18,marginTop:28,color:"#9aa2b3",fontSize:11}}><span><ShieldCheck size={13} style={{display:"inline",verticalAlign:"-3px",marginRight:4}}/>Privacy-first</span><span><Users size={13} style={{display:"inline",verticalAlign:"-3px",marginRight:4}}/>1:1 only</span></div></div></div>}
     </section>
-    {settingsOpen && <div className="settings-overlay" role="presentation" onClick={()=>setSettingsOpen(false)}><section className="settings-pop settings-pop-bottom" role="dialog" aria-modal="true" aria-label="Account settings" onClick={e=>e.stopPropagation()}><h3>Account settings</h3><p>{profile.display_name}<br/>Shareable user ID: <strong>{profile.public_id}</strong><br/>Keep your 6-digit PIN private.</p><button onClick={()=>void logout()}><LogOut size={14} style={{display:"inline",verticalAlign:"-3px",marginRight:6}}/>Sign out</button></section></div>}
+    
   </main>;
 }
