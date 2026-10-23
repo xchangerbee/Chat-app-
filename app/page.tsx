@@ -92,11 +92,11 @@ export default function Home() {
         try {
           const payload = await response.clone().json() as { error?: string; message?: string };
           const serverMessage = payload.error || payload.message;
-          if (serverMessage && serverMessage.length <= 180) message = serverMessage;
+          if (response.status === 403) message = "Invalid invitation code. Check it and try again.";
           else if (response.status === 401) message = "Incorrect PIN. Please try again.";
-          else if (response.status === 403) message = "Invalid invitation code. Check it and try again.";
-          else if (response.status === 429) message = "Too many attempts. Please wait a little before trying again.";
+          else if (response.status === 429) message = (serverMessage && /seconds|wait/i.test(serverMessage)) ? serverMessage : "Too many attempts. Please wait a little before trying again.";
           else if (response.status >= 500) message = "The authentication service is temporarily unavailable. Please try again later.";
+          else if (serverMessage && serverMessage.length <= 180) message = serverMessage;
         } catch {
           const status = response.status;
           if (status === 401) message = "Incorrect PIN. Please try again.";
