@@ -19,6 +19,7 @@ export default function Home() {
   const [mode, setMode] = useState<Mode>("login");
   const [displayName, setDisplayName] = useState("");
   const [pin, setPin] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [isError, setIsError] = useState(false);
@@ -69,12 +70,13 @@ export default function Home() {
   async function submitAuth(e: React.FormEvent) {
     e.preventDefault(); setNotice(""); setIsError(false);
     if (mode === "register" && displayName.trim().length < 2) { setNotice("Please enter a name with at least 2 characters."); setIsError(true); return; }
+    if (mode === "register" && !inviteCode.trim() && !new URLSearchParams(window.location.search).get("invite")) { setNotice("Enter your team invitation code to register."); setIsError(true); return; }
     if (!/^\d{6}$/.test(pin)) { setNotice("Enter your 6-digit PIN."); setIsError(true); return; }
     if (!supabase) { setNotice("Supabase is not configured yet. Add the project URL and publishable key to the deployment environment."); setIsError(true); return; }
     setBusy(true);
     try {
       const device_id = getDeviceId();
-      const invite_code = new URLSearchParams(window.location.search).get("invite") ?? "";
+      const invite_code = inviteCode.trim() || new URLSearchParams(window.location.search).get("invite") || "";
       const { data, error } = await supabase.functions.invoke(mode === "register" ? "register-pin" : "login-pin", { body: mode === "register" ? { display_name: displayName.trim(), pin, device_id, invite_code } : { pin, device_id } });
       if (error) throw error;
       if (data?.session?.access_token && data?.session?.refresh_token) {
@@ -127,7 +129,7 @@ export default function Home() {
       <h2>{mode === "login" ? "Welcome back" : "Create your account"}</h2><p className="subtext">{mode === "login" ? "Enter your private PIN to continue to your chats." : "Choose a display name and a unique 6-digit PIN."}</p>
       <div className="tabs"><button className={mode === "login" ? "active" : ""} onClick={() => {setMode("login");setNotice("");}}>Log in</button><button className={mode === "register" ? "active" : ""} onClick={() => {setMode("register");setNotice("");}}>Register</button></div>
       <form onSubmit={submitAuth}>
-        {mode === "register" && <div className="field"><label htmlFor="displayName">Your display name</label><input id="displayName" autoComplete="nickname" maxLength={40} placeholder="e.g. Alex Morgan" value={displayName} onChange={e => setDisplayName(e.target.value)} required/></div>}
+        {mode === "register" && <><div className="field"><label htmlFor="displayName">Your display name</label><input id="displayName" autoComplete="nickname" maxLength={40} placeholder="e.g. Alex Morgan" value={displayName} onChange={e => setDisplayName(e.target.value)} required/></div><div className="field"><label htmlFor="inviteCode">Team invitation code</label><input id="inviteCode" type="password" autoComplete="off" maxLength={128} placeholder="Enter invitation code" value={inviteCode} onChange={e => setInviteCode(e.target.value)} required={!new URLSearchParams(typeof window === "undefined" ? "" : window.location.search).get("invite")}/><span style={{fontSize:11,color:"#929bad"}}>Ask your app administrator for an invitation code. Keep it private.</span></div></> }
         <div className="field"><label htmlFor="pin">6-digit PIN</label><input id="pin" className="pin-input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="••••••" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, "").slice(0,6))} required/><span style={{fontSize:11,color:"#929bad"}}>{mode === "register" ? "Your PIN must be unique. Never reuse a PIN from another account." : "After 3 incorrect attempts, sign-in is paused for 30 seconds."}</span></div>
         {notice && <div className={"notice " + (isError ? "error" : "")}>{notice}</div>}
         <button className="primary-btn" disabled={busy}>{busy ? "Please wait…" : mode === "login" ? "Continue securely" : "Create account"} <span style={{float:"right"}}><ArrowRight size={16}/></span></button>
