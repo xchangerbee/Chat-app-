@@ -77,7 +77,7 @@ async function decryptMessage(client: SupabaseClient, userId: string, ciphertext
     const plain = await window.crypto.subtle.decrypt({ name: "AES-GCM", iv: b64ToBytes(nonce) }, aesKey, b64ToBytes(packet.body));
     return new TextDecoder().decode(plain);
   } catch {
-    return "[Unable to decrypt this message on this device]";
+    return "This message isn’t available on this device.";
   }
 }
 type MessageItem = { id: string; conversation_id: string; sender_id: string; ciphertext: string; nonce: string; created_at: string; text?: string };
@@ -286,7 +286,7 @@ export default function Home() {
       setUserIdCopied(true);
       window.setTimeout(() => setUserIdCopied(false), 1800);
     } catch {
-      setNotice("Could not copy your User ID. Please copy it manually.");
+      setNotice("Couldn’t copy your ID. Please try again.");
       setIsError(true);
     }
   }
@@ -298,7 +298,7 @@ export default function Home() {
     if (mode === "register" && displayName.trim().length < 2) { setNotice("Please enter a name with at least 2 characters."); setIsError(true); return; }
     if (mode === "register" && !inviteCode.trim() && !new URLSearchParams(window.location.search).get("invite")) { setNotice("Enter your team invitation code to register."); setIsError(true); return; }
     if (!/^\d{6}$/.test(pin)) { setNotice("Enter your 6-digit PIN."); setIsError(true); return; }
-    if (!supabase) { setNotice("Supabase is not configured yet. Add the project URL and publishable key to the deployment environment."); setIsError(true); return; }
+    if (!supabase) { setNotice("We can’t connect right now. Please try again in a little while."); setIsError(true); return; }
     setBusy(true);
     try {
       const device_id = getDeviceId();
@@ -370,7 +370,7 @@ export default function Home() {
       await loadChats(profile.id);
     } catch (error) {
       console.error("Message send failed", error);
-      setNotice(error instanceof Error ? error.message : "Message couldn't be sent. Please try again.");
+      setNotice("Your message couldn’t be sent. Please try again.");
       setIsError(true);
     } finally { setSending(false); }
   }
@@ -469,14 +469,14 @@ export default function Home() {
       {chats.length ? <div className="chat-list">{chats.map(chat=><button className={"chat-row "+(selectedChat?.id===chat.id?"selected":"")} key={chat.id} onClick={()=>{setSelectedChat(chat);setMobileChatOpen(true);}}><div className="avatar">{chat.other.display_name.slice(0,1).toUpperCase()}</div><div className="chat-info"><div className="chat-name-line"><span className="chat-name">{chat.other.display_name}</span><span className="chat-time">{new Date(chat.last_message_at).toLocaleDateString()}</span></div><div className="chat-preview">Open conversation</div></div></button>)}</div> : <div className="empty-list"><MessageCircle size={20} style={{margin:"0 auto 9px",opacity:.6}}/><div>No conversations yet</div><div>Search a teammate by their 4-digit ID to start chatting.</div></div>}
       <div className={"side-bottom" + (settingsOpen ? " settings-expanded" : "")}>{settingsOpen && <section className="settings-pop settings-pop-inline" role="dialog" aria-label="Account settings" onClick={e=>e.stopPropagation()}><h3>Account settings</h3><p>{profile.display_name}<br/><span className="settings-user-id-label">Your User ID:</span> <strong className="settings-user-id-value">{profile.public_id}</strong> <button type="button" className="copy-user-id-btn" onClick={()=>void copyUserId()} aria-label="Copy your User ID"><span>{userIdCopied ? "Copied!" : "Copy"}</span></button><br/>Keep your 6-digit PIN private.</p><button onClick={()=>void logout()}><LogOut size={14} style={{display:"inline",verticalAlign:"-3px",marginRight:6}}/>Logout</button></section>}<div className="profile-mini"><div className="avatar">{profile.display_name.slice(0,1).toUpperCase()}</div><div className="profile-copy"><strong>{profile.display_name}</strong><span>Your ID · {profile.public_id}</span></div><button className="icon-btn" title="Account settings" aria-label="Account settings" aria-expanded={settingsOpen} onClick={()=>setSettingsOpen(open=>!open)}><Settings size={17}/></button></div></div>
     </aside>
-    <section className="main-panel"><header className="main-top"><div style={{display:"flex",alignItems:"center",gap:11}}>{selectedChat && <button className="icon-btn back-btn" onClick={()=>{setSelectedChat(null);setMobileChatOpen(false);}}><ArrowLeft size={17}/></button>}<div><div className="top-title">{selectedChat ? selectedChat.other.display_name : "Your conversations"}</div><div className="top-sub">{selectedChat ? "User ID · "+selectedChat.other.public_id : "A little more focus, a little less noise."}</div></div></div><div className="top-actions"><div className="online-pill"><span className="online-dot"></span> Private workspace</div><button className="icon-btn" title="Help and privacy"><ShieldCheck size={17}/></button></div></header>
+    <section className="main-panel"><header className="main-top"><div style={{display:"flex",alignItems:"center",gap:11}}>{selectedChat && <button className="icon-btn back-btn" onClick={()=>{setSelectedChat(null);setMobileChatOpen(false);}}><ArrowLeft size={17}/></button>}<div><div className="top-title">{selectedChat ? selectedChat.other.display_name : "Your conversations"}</div><div className="top-sub">{selectedChat ? "User ID · "+selectedChat.other.public_id : "A little more focus, a little less noise."}</div></div></div><div className="top-actions"><div className="online-pill"><span className="online-dot"></span> Your private space</div><button className="icon-btn" title="Help and privacy"><ShieldCheck size={17}/></button></div></header>
       {selectedChat ? <div className="chat-view">
         <div className="messages-list">
-          {messages.length ? messages.map(message => <div key={message.id} className={"message-line " + (message.sender_id === profile.id ? "mine" : "theirs")}><div className="message-bubble">{message.text || "Decrypting…"}</div><span className="message-meta">{new Date(message.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}{message.sender_id === profile.id ? " · Sent" : ""}</span></div>) : <div className="chat-placeholder"><div className="welcome-icon"><LockKeyhole size={28}/></div><h3 style={{fontFamily:"Manrope",color:"#263047"}}>Start your conversation</h3><p>Messages are encrypted on this device before they are saved. Keep your browser data safe so this device can decrypt its messages.</p></div>}
+          {messages.length ? messages.map(message => <div key={message.id} className={"message-line " + (message.sender_id === profile.id ? "mine" : "theirs")}><div className="message-bubble">{message.text || "Decrypting…"}</div><span className="message-meta">{new Date(message.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}{message.sender_id === profile.id ? " · Sent" : ""}</span></div>) : <div className="chat-placeholder"><div className="welcome-icon"><LockKeyhole size={28}/></div><h3 style={{fontFamily:"Manrope",color:"#263047"}}>Start your conversation</h3><p>Your conversations are kept private on this device. Keep this browser’s data safe so you can continue accessing your messages.</p></div>}
         </div>
         {notice && <div className={"notice " + (isError ? "error" : "")} style={{margin:"0 20px 10px"}}>{notice}</div>}
         <form className="composer" onSubmit={sendMessage}><div className="composer-inner active"><textarea aria-label="Message" value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Write a secure message…" maxLength={4000} rows={1}/><button className="send-btn" type="submit" disabled={!draft.trim() || sending} aria-label="Send message">{sending ? "…" : <ArrowRight size={18}/>}</button></div><div className="composer-foot"><LockKeyhole size={12}/> Encrypted on this device · Never share your PIN</div></form>
-      </div> : <div className="content-center"><div className="welcome-card"><div className="welcome-icon"><Sparkles size={30}/></div><h2>Your space, your people.</h2><p>Start a private one-to-one conversation by searching for a teammate using their 4-digit user ID.</p><button className="small-primary" onClick={()=>document.querySelector<HTMLInputElement>(".search-wrap input")?.focus()}><Plus size={15} style={{display:"inline",verticalAlign:"-3px",marginRight:6}}/>Find a teammate</button><div style={{display:"flex",justifyContent:"center",gap:18,marginTop:28,color:"#9aa2b3",fontSize:11}}><span><ShieldCheck size={13} style={{display:"inline",verticalAlign:"-3px",marginRight:4}}/>Privacy-first</span><span><Users size={13} style={{display:"inline",verticalAlign:"-3px",marginRight:4}}/>1:1 only</span></div></div></div>}
+      </div> : <div className="content-center"><div className="welcome-card"><div className="welcome-icon"><Sparkles size={30}/></div><h2>Your space, your people.</h2><p>Start a private one-to-one conversation by searching for a teammate using their 4-digit user ID.</p><button className="small-primary" onClick={()=>document.querySelector<HTMLInputElement>(".search-wrap input")?.focus()}><Plus size={15} style={{display:"inline",verticalAlign:"-3px",marginRight:6}}/>Find a teammate</button><div style={{display:"flex",justifyContent:"center",gap:18,marginTop:28,color:"#9aa2b3",fontSize:11}}><span><ShieldCheck size={13} style={{display:"inline",verticalAlign:"-3px",marginRight:4}}/>Your privacy comes first</span><span><Users size={13} style={{display:"inline",verticalAlign:"-3px",marginRight:4}}/>Just you and one teammate</span></div></div></div>}
     </section>
     
   </main>;
