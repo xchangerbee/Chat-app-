@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 type Mode = "login" | "register";
 type Profile = { id: string; public_id: string; display_name: string };
 type ChatItem = { id: string; other: Profile; last_message_at: string };
+type SupabaseClient = ReturnType<typeof createClient>;
 
 
 function bytesToB64(bytes: Uint8Array) {
@@ -16,7 +17,7 @@ function bytesToB64(bytes: Uint8Array) {
 function b64ToBytes(value: string) {
   return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
 }
-async function ensureDeviceKey(client: any, userId: string) {
+async function ensureDeviceKey(client: SupabaseClient, userId: string) {
   // Keep each account's private key separate on shared browsers.
   const storageKey = "chat_private_key_v1:" + userId;
   let privateKeyBytes: Uint8Array;
@@ -44,7 +45,7 @@ async function ensureDeviceKey(client: any, userId: string) {
   const privateKey = await window.crypto.subtle.importKey("pkcs8", privateKeyBuffer, { name: "RSA-OAEP", hash: "SHA-256" }, false, ["decrypt"]);
   return { privateKey, publicKeyB64, deviceId };
 }
-async function encryptMessage(client: any, userId: string, recipientId: string, text: string) {
+async function encryptMessage(client: SupabaseClient, userId: string, recipientId: string, text: string) {
   const { deviceId: ownDeviceId, publicKeyB64: ownPublicKey } = await ensureDeviceKey(client, userId);
   const { data: devices, error } = await client.from("devices").select("id,user_id,identity_public_key").in("user_id", [userId, recipientId]).is("revoked_at", null);
   if (error) throw error;
@@ -64,7 +65,7 @@ async function encryptMessage(client: any, userId: string, recipientId: string, 
   }
   return { ciphertext: JSON.stringify({ v: 2, body: bytesToB64(body), keys: wrapped }), nonce: bytesToB64(iv) };
 }
-async function decryptMessage(client: any, userId: string, ciphertext: string, nonce: string) {
+async function decryptMessage(client: SupabaseClient, userId: string, ciphertext: string, nonce: string) {
   try {
     const packet = JSON.parse(ciphertext) as { v: number; body: string; keys: Record<string, string> };
     const { privateKey, deviceId } = await ensureDeviceKey(client, userId);
@@ -137,7 +138,7 @@ export default function Home() {
     const result: ChatItem[] = [];
     for (const membership of memberships) {
       const { data: members } = await supabase.from("conversation_members").select("user_id,profiles(id,public_id,display_name)").eq("conversation_id", membership.conversation_id);
-      const other = (members || []).map((m: any) => m.profiles).find((p: Profile | null) => p && p.id !== userId);
+      const other = (members || []).map((m: { user_id: string; profiles: Profile | null }) => m.profiles).find((p: Profile | null) => p && p.id !== userId);
       const { data: conversation } = await supabase.from("conversations").select("id,last_message_at").eq("id", membership.conversation_id).maybeSingle();
       if (other && conversation) result.push({ id: conversation.id, other, last_message_at: conversation.last_message_at });
     }
@@ -280,8 +281,8 @@ export default function Home() {
   if (!profile) return <main className="auth-shell">
     <section className="auth-art">
       <div className="brand"><span className="brand-mark"><MessageCircle size={19} strokeWidth={2.5}/></span> chat.</div>
-      <div className="art-copy"><h1>Good conversations.<br/><span>Less noise.</span></h1><p>A quieter, more thoughtful space for your team's one-to-one conversations. Just your people, all in one place.</p>
-        <div className="floating-chat"><div className="float-head"><div className="avatar">A</div><div><strong style={{fontSize:13}}>Aarav Mehta</strong><div style={{fontSize:11,color:"#8b94a7",marginTop:3}}>Online now</div></div><span style={{marginLeft:"auto",color:"#7c86a0"}}><MoreHorizontal size={19}/></span></div><div className="bubble left">Hey! I've shared the updated plan with you.</div><div className="bubble right">Got it, thanks. I'll take a look ✨</div><div className="bubble left" style={{width:"61%"}}>Perfect. No rush!</div></div>
+      <div className="art-copy"><h1>Good conversations.<br/><span>Less noise.</span></h1><p>A quieter, more thoughtful space for your team&apos;s one-to-one conversations. Just your people, all in one place.</p>
+        <div className="floating-chat"><div className="float-head"><div className="avatar">A</div><div><strong style={{fontSize:13}}>Aarav Mehta</strong><div style={{fontSize:11,color:"#8b94a7",marginTop:3}}>Online now</div></div><span style={{marginLeft:"auto",color:"#7c86a0"}}><MoreHorizontal size={19}/></span></div><div className="bubble left">Hey! I&apos;ve shared the updated plan with you.</div><div className="bubble right">Got it, thanks. I&apos;ll take a look ✨</div><div className="bubble left" style={{width:"61%"}}>Perfect. No rush!</div></div>
       </div>
       <div className="art-foot">Thoughtfully made for small teams · Private by design</div>
     </section>
