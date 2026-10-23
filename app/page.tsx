@@ -114,6 +114,8 @@ export default function Home() {
   const [sending, setSending] = useState(false);
   const settingsOpenRef = useRef(settingsOpen);
   const mobileChatOpenRef = useRef(mobileChatOpen);
+  const messagesListRef = useRef<HTMLDivElement | null>(null);
+  const shouldAutoScrollMessagesRef = useRef(true);
 
   settingsOpenRef.current = settingsOpen;
   mobileChatOpenRef.current = mobileChatOpen;
@@ -402,6 +404,9 @@ export default function Home() {
 
   useEffect(() => {
     if (!selectedChat || !profile || !supabase) { setMessages([]); return; }
+    // Every newly opened conversation starts at its newest message.
+    shouldAutoScrollMessagesRef.current = true;
+    setMessages([]);
     void loadMessages(selectedChat, profile.id);
     const channel = supabase.channel("messages-" + selectedChat.id)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: "conversation_id=eq." + selectedChat.id }, (payload) => {
@@ -415,6 +420,17 @@ export default function Home() {
     return () => { void supabase.removeChannel(channel); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedChat?.id, profile?.id]);
+
+  useEffect(() => {
+    const list = messagesListRef.current;
+    if (!list || !selectedChat || !messages.length || !shouldAutoScrollMessagesRef.current) return;
+    // Wait for React to paint the newly loaded/received message before measuring scrollHeight.
+    const frame = window.requestAnimationFrame(() => {
+      const currentList = messagesListRef.current;
+      if (currentList && shouldAutoScrollMessagesRef.current) currentList.scrollTop = currentList.scrollHeight;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages, selectedChat?.id]);
 
   async function searchById() {
     if (!supabase || !/^\d{4}$/.test(search)) { setSearchNotice("Enter a valid 4-digit user ID."); return; }
@@ -497,7 +513,10 @@ export default function Home() {
     </aside>
     <section className="main-panel"><header className="main-top"><div style={{display:"flex",alignItems:"center",gap:11}}>{selectedChat && <button className="icon-btn back-btn" onClick={()=>{setSelectedChat(null);setMobileChatOpen(false);}}><ArrowLeft size={17}/></button>}<div><div className="top-title">{selectedChat ? selectedChat.other.display_name : "Your conversations"}</div><div className="top-sub">{selectedChat ? "User ID · "+selectedChat.other.public_id : "A little more focus, a little less noise."}</div></div></div><div className="top-actions"><div className="online-pill"><span className="online-dot"></span> Your private space</div><button className="icon-btn" title="Help and privacy"><ShieldCheck size={17}/></button></div></header>
       {selectedChat ? <div className="chat-view">
-        <div className="messages-list">
+        <div className="messages-list" ref={messagesListRef} onScroll={event => {
+          const element = event.currentTarget;
+          shouldAutoScrollMessagesRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
+        }}>
           {messages.length ? messages.map(message => <div key={message.id} className={"message-line " + (message.sender_id === profile.id ? "mine" : "theirs")}><div className="message-bubble">{message.text || "Decrypting…"}</div><span className="message-meta">{new Date(message.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}{message.sender_id === profile.id ? " · Sent" : ""}</span></div>) : <div className="chat-placeholder"><div className="welcome-icon"><LockKeyhole size={28}/></div><h3 style={{fontFamily:"Manrope",color:"#263047"}}>Start your conversation</h3><p>Your conversations are kept private on this device. Keep this browser’s data safe so you can continue accessing your messages.</p></div>}
         </div>
         {notice && <div className={"notice " + (isError ? "error" : "")} style={{margin:"0 20px 10px"}}>{notice}</div>}
