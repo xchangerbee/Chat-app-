@@ -9,46 +9,66 @@
 @media(max-width:640px){.messages-list{padding:16px 12px}.message-line{max-width:88%}.composer{padding:10px 12px}.composer-inner textarea{font-size:14px}}
 
 
-/* Mobile chat ergonomics: keep the conversation header and composer visible.
-   The viewport height is synced to visualViewport while the mobile keyboard is open. */
+/* Mobile chat layout: anchor the whole chat to the visible viewport.
+   This keeps the header and composer out of the messages' scroll container and
+   lets the composer move above Android's software keyboard when visualViewport shrinks. */
 @media(max-width:640px){
   .app-shell.chat-open{
+    position:fixed;
+    inset:var(--chat-viewport-offset-top,0px) 0 auto 0;
+    display:block;
+    width:100%;
     height:var(--chat-viewport-height,100dvh);
     min-height:0;
     overflow:hidden;
+    overscroll-behavior:none;
   }
+  .app-shell.chat-open .sidebar{display:none}
   .app-shell.chat-open .main-panel{
-    height:var(--chat-viewport-height,100dvh);
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    width:100%;
+    height:100%;
     min-height:0;
     overflow:hidden;
   }
   .app-shell.chat-open .main-top{
-    position:sticky;
-    top:0;
-    z-index:30;
+    position:relative;
+    top:auto;
+    z-index:2;
     flex:0 0 67px;
+    height:67px;
+    min-height:67px;
     background:#fff;
+    padding-top:env(safe-area-inset-top,0px);
   }
   .app-shell.chat-open .chat-view{
-    height:calc(var(--chat-viewport-height,100dvh) - 67px);
+    display:flex;
+    flex:1 1 0;
+    flex-direction:column;
+    height:auto;
     min-height:0;
-    flex:1 1 auto;
     overflow:hidden;
   }
   .app-shell.chat-open .messages-list{
-    flex:1 1 auto;
+    flex:1 1 0;
     min-height:0;
+    overflow-x:hidden;
     overflow-y:auto;
     overscroll-behavior:contain;
     -webkit-overflow-scrolling:touch;
   }
   .app-shell.chat-open .composer{
-    position:sticky;
-    bottom:0;
-    z-index:25;
+    position:relative;
+    inset:auto;
+    z-index:3;
     flex:0 0 auto;
-    padding-bottom:calc(10px + env(safe-area-inset-bottom, 0px));
+    width:100%;
+    margin:0;
+    padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));
     background:#fff;
-    transform:translateZ(0);
+    transform:none;
   }
 }
