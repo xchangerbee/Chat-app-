@@ -297,3 +297,5 @@ html,body{background:var(--canvas);color:var(--ink)}
   .auth-card .tabs{margin-bottom:16px}
   .auth-card .hint{font-size:11px}
 }
+
+.chat-unread-badge{flex:0 0 auto;min-width:20px;height:20px;padding:0 6px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;background:#5962df;color:#fff;font-size:10px;font-weight:800;line-height:1}.chat-row:has(.chat-unread-badge) .chat-name{color:var(--text,#182033)}.chat-row:has(.chat-unread-badge) .chat-preview{color:var(--text,#182033);font-weight:700}
