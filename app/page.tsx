@@ -17,7 +17,8 @@ function b64ToBytes(value: string) {
   return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
 }
 async function ensureDeviceKey(client: any, userId: string) {
-  const storageKey = "chat_private_key_v1";
+  // Keep each account's private key separate on shared browsers.
+  const storageKey = "chat_private_key_v1:" + userId;
   let privateKeyBytes: Uint8Array;
   let publicKeyB64: string;
   const saved = window.localStorage.getItem(storageKey);
@@ -31,40 +32,46 @@ async function ensureDeviceKey(client: any, userId: string) {
     publicKeyB64 = bytesToB64(new Uint8Array(await window.crypto.subtle.exportKey("spki", pair.publicKey)));
     window.localStorage.setItem(storageKey, JSON.stringify({ privateKey: bytesToB64(privateKeyBytes), publicKey: publicKeyB64 }));
   }
-  const { data: existing } = await client.from("devices").select("id").eq("user_id", userId).eq("identity_public_key", publicKeyB64).is("revoked_at", null).maybeSingle();
-  if (!existing) {
-    const { error } = await client.from("devices").insert({ user_id: userId, device_label: "This browser", identity_public_key: publicKeyB64 });
+  const { data: existing, error: lookupError } = await client.from("devices").select("id").eq("user_id", userId).eq("identity_public_key", publicKeyB64).is("revoked_at", null).maybeSingle();
+  if (lookupError) throw lookupError;
+  let deviceId = existing?.id as string | undefined;
+  if (!deviceId) {
+    const { data: created, error } = await client.from("devices").insert({ user_id: userId, device_label: "This browser", identity_public_key: publicKeyB64 }).select("id").single();
     if (error) throw error;
+    deviceId = created.id as string;
   }
   const privateKeyBuffer = Uint8Array.from(privateKeyBytes).buffer;
   const privateKey = await window.crypto.subtle.importKey("pkcs8", privateKeyBuffer, { name: "RSA-OAEP", hash: "SHA-256" }, false, ["decrypt"]);
-  return { privateKey, publicKeyB64 };
+  return { privateKey, publicKeyB64, deviceId };
 }
 async function encryptMessage(client: any, userId: string, recipientId: string, text: string) {
-  const { publicKeyB64: ownPublicKey } = await ensureDeviceKey(client, userId);
-  const { data: devices, error } = await client.from("devices").select("user_id,identity_public_key").in("user_id", [userId, recipientId]).is("revoked_at", null);
+  const { deviceId: ownDeviceId, publicKeyB64: ownPublicKey } = await ensureDeviceKey(client, userId);
+  const { data: devices, error } = await client.from("devices").select("id,user_id,identity_public_key").in("user_id", [userId, recipientId]).is("revoked_at", null);
   if (error) throw error;
-  const keys = new Map<string, string>();
-  for (const device of (devices || [])) if (!keys.has(device.user_id)) keys.set(device.user_id, device.identity_public_key);
-  keys.set(userId, ownPublicKey);
-  if (!keys.has(recipientId)) throw new Error("Your teammate needs to open the app once to set up secure messaging.");
+  const targets = new Map<string, { user_id: string; identity_public_key: string }>();
+  for (const device of (devices || [])) targets.set(device.id, device);
+  // Ensure this browser's current public key is the key used for this account/device.
+  targets.set(ownDeviceId, { user_id: userId, identity_public_key: ownPublicKey });
+  if (![...targets.values()].some(device => device.user_id === recipientId)) throw new Error("Your teammate needs to open the app once to set up secure messaging.");
   const aesKey = await window.crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
   const iv = window.crypto.getRandomValues(new Uint8Array(12));
   const body = new Uint8Array(await window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, aesKey, new TextEncoder().encode(text)));
   const rawAesKey = await window.crypto.subtle.exportKey("raw", aesKey);
   const wrapped: Record<string, string> = {};
-  for (const [memberId, keyB64] of keys) {
-    const publicKey = await window.crypto.subtle.importKey("spki", b64ToBytes(keyB64), { name: "RSA-OAEP", hash: "SHA-256" }, false, ["encrypt"]);
-    wrapped[memberId] = bytesToB64(new Uint8Array(await window.crypto.subtle.encrypt({ name: "RSA-OAEP" }, publicKey, rawAesKey)));
+  for (const [deviceId, device] of targets) {
+    const publicKey = await window.crypto.subtle.importKey("spki", b64ToBytes(device.identity_public_key), { name: "RSA-OAEP", hash: "SHA-256" }, false, ["encrypt"]);
+    wrapped[deviceId] = bytesToB64(new Uint8Array(await window.crypto.subtle.encrypt({ name: "RSA-OAEP" }, publicKey, rawAesKey)));
   }
-  return { ciphertext: JSON.stringify({ v: 1, body: bytesToB64(body), keys: wrapped }), nonce: bytesToB64(iv) };
+  return { ciphertext: JSON.stringify({ v: 2, body: bytesToB64(body), keys: wrapped }), nonce: bytesToB64(iv) };
 }
 async function decryptMessage(client: any, userId: string, ciphertext: string, nonce: string) {
   try {
     const packet = JSON.parse(ciphertext) as { v: number; body: string; keys: Record<string, string> };
-    if (packet.v !== 1 || !packet.keys?.[userId]) return "[This message isn't available on this device]";
-    const { privateKey } = await ensureDeviceKey(client, userId);
-    const rawKey = await window.crypto.subtle.decrypt({ name: "RSA-OAEP" }, privateKey, b64ToBytes(packet.keys[userId]));
+    const { privateKey, deviceId } = await ensureDeviceKey(client, userId);
+    // v1 messages used user IDs as recipient keys; v2 uses unique device IDs.
+    const wrappedKey = packet.v === 1 ? packet.keys?.[userId] : packet.v === 2 ? packet.keys?.[deviceId] : undefined;
+    if (!wrappedKey) return "[This message isn't available on this device]";
+    const rawKey = await window.crypto.subtle.decrypt({ name: "RSA-OAEP" }, privateKey, b64ToBytes(wrappedKey));
     const aesKey = await window.crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["decrypt"]);
     const plain = await window.crypto.subtle.decrypt({ name: "AES-GCM", iv: b64ToBytes(nonce) }, aesKey, b64ToBytes(packet.body));
     return new TextDecoder().decode(plain);
