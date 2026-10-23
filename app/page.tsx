@@ -157,7 +157,7 @@ export default function Home() {
     for (const membership of memberships) {
       const { data: members, error: membersError } = await supabase
         .from("conversation_members")
-        .select("user_id,profiles(id,public_id,display_name)")
+        .select("user_id")
         .eq("conversation_id", membership.conversation_id);
 
       if (membersError) {
@@ -165,12 +165,22 @@ export default function Home() {
         continue;
       }
 
-      const other = (members || [])
-        .flatMap((member) => {
-          const profiles = member.profiles;
-          return Array.isArray(profiles) ? profiles : profiles ? [profiles] : [];
-        })
-        .find((participant) => participant.id !== userId);
+      // conversation_members.user_id references auth.users, not profiles.
+      // Resolve participant profiles with a separate query instead of a nonexistent nested relationship.
+      const participantIds = [...new Set((members || []).map((member) => member.user_id).filter((id) => id !== userId))];
+      if (!participantIds.length) continue;
+
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id,public_id,display_name")
+        .in("id", participantIds);
+
+      if (profilesError) {
+        console.error("Conversation profiles load failed:", profilesError);
+        continue;
+      }
+
+      const other = (profiles || []).find((participant) => participant.id !== userId);
 
       const { data: conversation, error: conversationError } = await supabase
         .from("conversations")
