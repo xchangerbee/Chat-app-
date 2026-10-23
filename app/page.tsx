@@ -124,6 +124,8 @@ export default function Home() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+    const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (themeColor) themeColor.content = theme === "dark" ? "#111725" : "#f7f8fc";
     try {
       window.localStorage.setItem("chat_theme", theme);
     } catch {
