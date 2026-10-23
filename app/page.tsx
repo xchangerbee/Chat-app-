@@ -86,7 +86,28 @@ export default function Home() {
       else throw new Error("The authentication service is not ready yet.");
       setPin(""); setNotice("");
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Unable to sign in right now."); setIsError(true);
+      let message = mode === "register" ? "We couldn't create your account. Please try again." : "We couldn't log you in. Please check your PIN.";
+      const response = (err && typeof err === "object" && "context" in err) ? (err as { context?: unknown }).context : undefined;
+      if (response instanceof Response) {
+        try {
+          const payload = await response.clone().json() as { error?: string; message?: string };
+          const serverMessage = payload.error || payload.message;
+          if (serverMessage && serverMessage.length <= 180) message = serverMessage;
+          else if (response.status === 401) message = "Incorrect PIN. Please try again.";
+          else if (response.status === 403) message = "Invalid invitation code. Check it and try again.";
+          else if (response.status === 429) message = "Too many attempts. Please wait a little before trying again.";
+          else if (response.status >= 500) message = "The authentication service is temporarily unavailable. Please try again later.";
+        } catch {
+          const status = response.status;
+          if (status === 401) message = "Incorrect PIN. Please try again.";
+          else if (status === 403) message = "Invalid invitation code. Check it and try again.";
+          else if (status === 429) message = "Too many attempts. Please wait a little before trying again.";
+          else if (status >= 500) message = "The authentication service is temporarily unavailable. Please try again later.";
+        }
+      } else if (err instanceof Error && err.message && !/non-2xx|edge function/i.test(err.message)) {
+        message = err.message;
+      }
+      setNotice(message); setIsError(true);
     } finally { setBusy(false); }
   }
 
@@ -113,7 +134,21 @@ export default function Home() {
 
   async function logout() {
     if (supabase) await supabase.auth.signOut();
-    setSettingsOpen(false); setProfile(null); setSelectedChat(null); setChats([]);
+    setSettingsOpen(false);
+    setProfile(null);
+    setSelectedChat(null);
+    setChats([]);
+    setDisplayName("");
+    setPin("");
+    setInviteCode("");
+    setNotice("");
+    setIsError(false);
+    setMode("login");
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("invite");
+      window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+    }
   }
 
   if (!profile) return <main className="auth-shell">
@@ -127,9 +162,9 @@ export default function Home() {
     <section className="auth-panel"><div className="auth-card">
       <div className="brand" style={{marginBottom:35}}><span className="brand-mark"><MessageCircle size={19} strokeWidth={2.5}/></span> chat.</div>
       <h2>{mode === "login" ? "Welcome back" : "Create your account"}</h2><p className="subtext">{mode === "login" ? "Enter your private PIN to continue to your chats." : "Choose a display name and a unique 6-digit PIN."}</p>
-      <div className="tabs"><button className={mode === "login" ? "active" : ""} onClick={() => {setMode("login");setNotice("");}}>Log in</button><button className={mode === "register" ? "active" : ""} onClick={() => {setMode("register");setNotice("");}}>Register</button></div>
+      <div className="tabs"><button className={mode === "login" ? "active" : ""} onClick={() => {setMode("login");setNotice("");setIsError(false);setDisplayName("");setPin("");setInviteCode("");}}>Log in</button><button className={mode === "register" ? "active" : ""} onClick={() => {setMode("register");setNotice("");setIsError(false);setDisplayName("");setPin("");setInviteCode("");}}>Register</button></div>
       <form onSubmit={submitAuth}>
-        {mode === "register" && <><div className="field"><label htmlFor="displayName">Your display name</label><input id="displayName" autoComplete="nickname" maxLength={40} placeholder="e.g. Alex Morgan" value={displayName} onChange={e => setDisplayName(e.target.value)} required/></div><div className="field"><label htmlFor="inviteCode">Team invitation code</label><input id="inviteCode" type="password" autoComplete="off" maxLength={128} placeholder="Enter invitation code" value={inviteCode} onChange={e => setInviteCode(e.target.value)} required={!new URLSearchParams(typeof window === "undefined" ? "" : window.location.search).get("invite")}/><span style={{fontSize:11,color:"#929bad"}}>Ask your app administrator for an invitation code. Keep it private.</span></div></> }
+        {mode === "register" && <><div className="field"><label htmlFor="displayName">Your display name</label><input id="displayName" autoComplete="off" maxLength={40} placeholder="e.g. Alex Morgan" value={displayName} onChange={e => setDisplayName(e.target.value)} required/></div><div className="field"><label htmlFor="inviteCode">Team invitation code</label><input id="inviteCode" type="password" autoComplete="off" maxLength={128} placeholder="Enter invitation code" value={inviteCode} onChange={e => setInviteCode(e.target.value)} required={!new URLSearchParams(typeof window === "undefined" ? "" : window.location.search).get("invite")}/><span style={{fontSize:11,color:"#929bad"}}>Ask your app administrator for an invitation code. Keep it private.</span></div></> }
         <div className="field"><label htmlFor="pin">6-digit PIN</label><input id="pin" className="pin-input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="••••••" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, "").slice(0,6))} required/><span style={{fontSize:11,color:"#929bad"}}>{mode === "register" ? "Your PIN must be unique. Never reuse a PIN from another account." : "After 3 incorrect attempts, sign-in is paused for 30 seconds."}</span></div>
         {notice && <div className={"notice " + (isError ? "error" : "")}>{notice}</div>}
         <button className="primary-btn" disabled={busy}>{busy ? "Please wait…" : mode === "login" ? "Continue securely" : "Create account"} <span style={{float:"right"}}><ArrowRight size={16}/></span></button>
