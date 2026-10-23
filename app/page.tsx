@@ -112,12 +112,14 @@ export default function Home() {
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
-    // Keep the mobile chat viewport aligned with the visible area when the
-    // on-screen keyboard opens/closes (notably on Android Chrome).
+    // Track the visible mobile viewport so the chat stays above the Android
+    // on-screen keyboard instead of relying on sticky positioning alone.
     const viewport = window.visualViewport;
     const updateChatViewport = () => {
       const height = viewport?.height ?? window.innerHeight;
+      const offsetTop = viewport?.offsetTop ?? 0;
       document.documentElement.style.setProperty("--chat-viewport-height", height + "px");
+      document.documentElement.style.setProperty("--chat-viewport-offset-top", offsetTop + "px");
     };
     updateChatViewport();
     viewport?.addEventListener("resize", updateChatViewport);
@@ -130,6 +132,7 @@ export default function Home() {
       window.removeEventListener("resize", updateChatViewport);
       window.removeEventListener("orientationchange", updateChatViewport);
       document.documentElement.style.removeProperty("--chat-viewport-height");
+      document.documentElement.style.removeProperty("--chat-viewport-offset-top");
     };
   }, []);
 
