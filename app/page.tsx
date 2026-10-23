@@ -81,6 +81,7 @@ async function decryptMessage(client: SupabaseClient, userId: string, ciphertext
   }
 }
 type MessageItem = { id: string; conversation_id: string; sender_id: string; ciphertext: string; nonce: string; created_at: string; text?: string };
+type MessageReceipt = { message_id: string; delivered_at: string | null; seen_at: string | null };
 
 function getDeviceId() {
   if (typeof window === "undefined") return "server-render-device-id";
@@ -110,6 +111,7 @@ export default function Home() {
   const [searching, setSearching] = useState(false);
   const [searchNotice, setSearchNotice] = useState("");
   const [messages, setMessages] = useState<MessageItem[]>([]);
+  const [messageReceipts, setMessageReceipts] = useState<Record<string, { delivered_at: string | null; seen_at: string | null }>>({});
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const settingsOpenRef = useRef(settingsOpen);
@@ -370,6 +372,30 @@ export default function Home() {
   }
 
 
+
+  async function refreshOutgoingReceipts(chat: ChatItem, rows: MessageItem[]) {
+    if (!supabase || !profile) return;
+    const outgoingIds = rows.filter(row => row.sender_id === profile.id).map(row => row.id);
+    if (!outgoingIds.length) return;
+    const { data, error } = await supabase.from("message_receipts").select("message_id,delivered_at,seen_at").eq("user_id", chat.other.id).in("message_id", outgoingIds);
+    if (error) { console.error("Message receipt refresh failed:", error); return; }
+    const next: Record<string, { delivered_at: string | null; seen_at: string | null }> = {};
+    ((data || []) as MessageReceipt[]).forEach(receipt => { next[receipt.message_id] = { delivered_at: receipt.delivered_at, seen_at: receipt.seen_at }; });
+    setMessageReceipts(current => ({ ...current, ...next }));
+  }
+
+  async function markIncomingMessagesSeen(chat: ChatItem, userId: string, rows: MessageItem[]) {
+    if (!supabase) return;
+    const incomingIds = rows.filter(row => row.sender_id !== userId).map(row => row.id);
+    if (incomingIds.length) {
+      const seenAt = new Date().toISOString();
+      const { error } = await supabase.from("message_receipts").update({ delivered_at: seenAt, seen_at: seenAt }).eq("user_id", userId).in("message_id", incomingIds).is("seen_at", null);
+      if (error) console.error("Mark messages seen failed:", error);
+    }
+    const { error: readError } = await supabase.from("conversation_members").update({ last_read_at: new Date().toISOString() }).eq("conversation_id", chat.id).eq("user_id", userId);
+    if (readError) console.error("Conversation read position update failed:", readError);
+  }
+
   async function loadMessages(chat: ChatItem, userId: string) {
     if (!supabase) return;
     const { data, error } = await supabase.from("messages").select("id,conversation_id,sender_id,ciphertext,nonce,created_at").eq("conversation_id", chat.id).is("deleted_at", null).order("created_at", { ascending: true }).limit(200);
@@ -377,10 +403,8 @@ export default function Home() {
     const rows = (data || []) as MessageItem[];
     const decoded = await Promise.all(rows.map(async row => ({ ...row, text: await decryptMessage(supabase, userId, row.ciphertext, row.nonce) })));
     setMessages(decoded);
-    const incoming = rows.filter(row => row.sender_id !== userId).map(row => row.id);
-    if (incoming.length) {
-      await supabase.from("message_receipts").update({ delivered_at: new Date().toISOString() }).eq("user_id", userId).in("message_id", incoming).is("delivered_at", null);
-    }
+    await markIncomingMessagesSeen(chat, userId, rows);
+    await refreshOutgoingReceipts(chat, rows);
   }
 
   async function sendMessage(e: React.FormEvent) {
@@ -393,8 +417,10 @@ export default function Home() {
       const { data, error } = await supabase.from("messages").insert({ conversation_id: selectedChat.id, sender_id: profile.id, ciphertext: encrypted.ciphertext, nonce: encrypted.nonce, key_version: 1 }).select("id,conversation_id,sender_id,ciphertext,nonce,created_at").single();
       if (error) throw error;
       setDraft("");
-      setMessages(current => [...current, { ...(data as MessageItem), text }]);
+      const sentMessage = { ...(data as MessageItem), text };
+      setMessages(current => [...current, sentMessage]);
       await loadChats(profile.id);
+      await refreshOutgoingReceipts(selectedChat, [sentMessage]);
     } catch (error) {
       console.error("Message send failed", error);
       setNotice("Your message couldn’t be sent. Please try again.");
@@ -414,7 +440,7 @@ export default function Home() {
         if (row.sender_id === profile.id) return;
         void decryptMessage(supabase, profile.id, row.ciphertext, row.nonce).then(async text => {
           setMessages(current => current.some(message => message.id === row.id) ? current : [...current, { ...row, text }]);
-          await supabase.from("message_receipts").update({ delivered_at: new Date().toISOString() }).eq("message_id", row.id).eq("user_id", profile.id);
+          await markIncomingMessagesSeen(selectedChat, profile.id, [row]);
         });
       }).subscribe();
     return () => { void supabase.removeChannel(channel); };
@@ -431,6 +457,16 @@ export default function Home() {
     });
     return () => window.cancelAnimationFrame(frame);
   }, [messages, selectedChat?.id]);
+
+
+  useEffect(() => {
+    if (!selectedChat || !profile || !messages.length) return;
+    const refresh = () => { void refreshOutgoingReceipts(selectedChat, messages); };
+    refresh();
+    const timer = window.setInterval(refresh, 3000);
+    return () => window.clearInterval(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedChat?.id, profile?.id, messages]);
 
   async function searchById() {
     if (!supabase || !/^\d{4}$/.test(search)) { setSearchNotice("Enter a valid 4-digit user ID."); return; }
@@ -517,7 +553,7 @@ export default function Home() {
           const element = event.currentTarget;
           shouldAutoScrollMessagesRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
         }}>
-          {messages.length ? messages.map(message => <div key={message.id} className={"message-line " + (message.sender_id === profile.id ? "mine" : "theirs")}><div className="message-bubble">{message.text || "Decrypting…"}</div><span className="message-meta">{new Date(message.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}{message.sender_id === profile.id ? " · Sent" : ""}</span></div>) : <div className="chat-placeholder"><div className="welcome-icon"><LockKeyhole size={28}/></div><h3 style={{fontFamily:"Manrope",color:"#263047"}}>Start your conversation</h3><p>Your conversations are kept private on this device. Keep this browser’s data safe so you can continue accessing your messages.</p></div>}
+          {messages.length ? messages.map(message => <div key={message.id} className={"message-line " + (message.sender_id === profile.id ? "mine" : "theirs")}><div className="message-bubble">{message.text || "Decrypting…"}</div><span className="message-meta">{new Date(message.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}{message.sender_id === profile.id ? " · " + (messageReceipts[message.id]?.seen_at ? "Seen" : messageReceipts[message.id]?.delivered_at ? "Delivered" : "Sent") : ""}</span></div>) : <div className="chat-placeholder"><div className="welcome-icon"><LockKeyhole size={28}/></div><h3 style={{fontFamily:"Manrope",color:"#263047"}}>Start your conversation</h3><p>Your conversations are kept private on this device. Keep this browser’s data safe so you can continue accessing your messages.</p></div>}
         </div>
         {notice && <div className={"notice " + (isError ? "error" : "")} style={{margin:"0 20px 10px"}}>{notice}</div>}
         <form className="composer" onSubmit={sendMessage}><div className="composer-inner active"><textarea aria-label="Message" value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Write a secure message…" maxLength={4000} rows={1}/><button className="send-btn" type="submit" disabled={!draft.trim() || sending} aria-label="Send message">{sending ? "…" : <ArrowRight size={18}/>}</button></div><div className="composer-foot"><LockKeyhole size={12}/> Your privacy matters · Never share your PIN</div></form>
