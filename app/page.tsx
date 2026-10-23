@@ -133,15 +133,66 @@ export default function Home() {
 
   async function loadChats(userId: string) {
     if (!supabase) return;
-    const { data: memberships } = await supabase.from("conversation_members").select("conversation_id,last_read_at").order("joined_at", { ascending: false });
-    if (!memberships?.length) { setChats([]); return; }
+
+    // Fetch only conversations this signed-in user belongs to.
+    const { data: memberships, error: membershipsError } = await supabase
+      .from("conversation_members")
+      .select("conversation_id,joined_at")
+      .eq("user_id", userId)
+      .order("joined_at", { ascending: false });
+
+    if (membershipsError) {
+      console.error("Conversation list load failed:", membershipsError);
+      setNotice("Couldn't load your conversation list. Please refresh and try again.");
+      setIsError(true);
+      return;
+    }
+
+    if (!memberships?.length) {
+      setChats([]);
+      return;
+    }
+
     const result: ChatItem[] = [];
     for (const membership of memberships) {
-      const { data: members } = await supabase.from("conversation_members").select("user_id,profiles(id,public_id,display_name)").eq("conversation_id", membership.conversation_id);
-      const other = (members || []).flatMap((m) => m.profiles || []).find((p) => p.id !== userId);
-      const { data: conversation } = await supabase.from("conversations").select("id,last_message_at").eq("id", membership.conversation_id).maybeSingle();
-      if (other && conversation) result.push({ id: conversation.id, other, last_message_at: conversation.last_message_at });
+      const { data: members, error: membersError } = await supabase
+        .from("conversation_members")
+        .select("user_id,profiles(id,public_id,display_name)")
+        .eq("conversation_id", membership.conversation_id);
+
+      if (membersError) {
+        console.error("Conversation participants load failed:", membersError);
+        continue;
+      }
+
+      const other = (members || [])
+        .flatMap((member) => {
+          const profiles = member.profiles;
+          return Array.isArray(profiles) ? profiles : profiles ? [profiles] : [];
+        })
+        .find((participant) => participant.id !== userId);
+
+      const { data: conversation, error: conversationError } = await supabase
+        .from("conversations")
+        .select("id,last_message_at")
+        .eq("id", membership.conversation_id)
+        .maybeSingle();
+
+      if (conversationError) {
+        console.error("Conversation details load failed:", conversationError);
+        continue;
+      }
+
+      if (other && conversation) {
+        result.push({
+          id: conversation.id,
+          other: other as Profile,
+          last_message_at: conversation.last_message_at || membership.joined_at,
+        });
+      }
     }
+
+    result.sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
     setChats(result);
   }
 
