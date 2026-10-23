@@ -112,6 +112,28 @@ export default function Home() {
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
+    // Keep the mobile chat viewport aligned with the visible area when the
+    // on-screen keyboard opens/closes (notably on Android Chrome).
+    const viewport = window.visualViewport;
+    const updateChatViewport = () => {
+      const height = viewport?.height ?? window.innerHeight;
+      document.documentElement.style.setProperty("--chat-viewport-height", height + "px");
+    };
+    updateChatViewport();
+    viewport?.addEventListener("resize", updateChatViewport);
+    viewport?.addEventListener("scroll", updateChatViewport);
+    window.addEventListener("resize", updateChatViewport);
+    window.addEventListener("orientationchange", updateChatViewport);
+    return () => {
+      viewport?.removeEventListener("resize", updateChatViewport);
+      viewport?.removeEventListener("scroll", updateChatViewport);
+      window.removeEventListener("resize", updateChatViewport);
+      window.removeEventListener("orientationchange", updateChatViewport);
+      document.documentElement.style.removeProperty("--chat-viewport-height");
+    };
+  }, []);
+
+  useEffect(() => {
     if (!supabase) return;
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) void loadProfile(data.session.user.id);
