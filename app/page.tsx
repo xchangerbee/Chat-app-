@@ -103,6 +103,7 @@ export default function Home() {
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [search, setSearch] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [userIdCopied, setUserIdCopied] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [selectedChat, setSelectedChat] = useState<ChatItem | null>(null);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
@@ -276,6 +277,17 @@ export default function Home() {
 
     result.sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
     setChats(result);
+  }
+
+  async function copyUserId() {
+    try {
+      await navigator.clipboard.writeText(profile.public_id);
+      setUserIdCopied(true);
+      window.setTimeout(() => setUserIdCopied(false), 1800);
+    } catch {
+      setNotice("Could not copy your User ID. Please copy it manually.");
+      setIsError(true);
+    }
   }
 
   async function submitAuth(e: React.FormEvent) {
@@ -454,7 +466,7 @@ export default function Home() {
       {searchNotice && <div className="notice error" role="status" aria-live="polite" style={{marginTop:9,marginBottom:0}}>{searchNotice}</div>}
     </div><div className="section-label"><span>MESSAGES</span><span>{chats.length}</span></div>
       {chats.length ? <div className="chat-list">{chats.map(chat=><button className={"chat-row "+(selectedChat?.id===chat.id?"selected":"")} key={chat.id} onClick={()=>{setSelectedChat(chat);setMobileChatOpen(true);}}><div className="avatar">{chat.other.display_name.slice(0,1).toUpperCase()}</div><div className="chat-info"><div className="chat-name-line"><span className="chat-name">{chat.other.display_name}</span><span className="chat-time">{new Date(chat.last_message_at).toLocaleDateString()}</span></div><div className="chat-preview">Open conversation</div></div></button>)}</div> : <div className="empty-list"><MessageCircle size={20} style={{margin:"0 auto 9px",opacity:.6}}/><div>No conversations yet</div><div>Search a teammate by their 4-digit ID to start chatting.</div></div>}
-      <div className={"side-bottom" + (settingsOpen ? " settings-expanded" : "")}>{settingsOpen && <section className="settings-pop settings-pop-inline" role="dialog" aria-label="Account settings" onClick={e=>e.stopPropagation()}><h3>Account settings</h3><p>{profile.display_name}<br/>Shareable user ID: <strong>{profile.public_id}</strong><br/>Keep your 6-digit PIN private.</p><button onClick={()=>void logout()}><LogOut size={14} style={{display:"inline",verticalAlign:"-3px",marginRight:6}}/>Sign out</button></section>}<div className="profile-mini"><div className="avatar">{profile.display_name.slice(0,1).toUpperCase()}</div><div className="profile-copy"><strong>{profile.display_name}</strong><span>Your ID · {profile.public_id}</span></div><button className="icon-btn" title="Account settings" aria-label="Account settings" aria-expanded={settingsOpen} onClick={()=>setSettingsOpen(open=>!open)}><Settings size={17}/></button></div></div>
+      <div className={"side-bottom" + (settingsOpen ? " settings-expanded" : "")}>{settingsOpen && <section className="settings-pop settings-pop-inline" role="dialog" aria-label="Account settings" onClick={e=>e.stopPropagation()}><h3>Account settings</h3><p>{profile.display_name}<br/><span className="settings-user-id-label">Your User ID:</span> <strong className="settings-user-id-value">{profile.public_id}</strong> <button type="button" className="copy-user-id-btn" onClick={()=>void copyUserId()} aria-label="Copy your User ID"><span>{userIdCopied ? "Copied!" : "Copy"}</span></button><br/>Keep your 6-digit PIN private.</p><button onClick={()=>void logout()}><LogOut size={14} style={{display:"inline",verticalAlign:"-3px",marginRight:6}}/>Logout</button></section>}<div className="profile-mini"><div className="avatar">{profile.display_name.slice(0,1).toUpperCase()}</div><div className="profile-copy"><strong>{profile.display_name}</strong><span>Your ID · {profile.public_id}</span></div><button className="icon-btn" title="Account settings" aria-label="Account settings" aria-expanded={settingsOpen} onClick={()=>setSettingsOpen(open=>!open)}><Settings size={17}/></button></div></div>
     </aside>
     <section className="main-panel"><header className="main-top"><div style={{display:"flex",alignItems:"center",gap:11}}>{selectedChat && <button className="icon-btn back-btn" onClick={()=>{setSelectedChat(null);setMobileChatOpen(false);}}><ArrowLeft size={17}/></button>}<div><div className="top-title">{selectedChat ? selectedChat.other.display_name : "Your conversations"}</div><div className="top-sub">{selectedChat ? "User ID · "+selectedChat.other.public_id : "A little more focus, a little less noise."}</div></div></div><div className="top-actions"><div className="online-pill"><span className="online-dot"></span> Private workspace</div><button className="icon-btn" title="Help and privacy"><ShieldCheck size={17}/></button></div></header>
       {selectedChat ? <div className="chat-view">
