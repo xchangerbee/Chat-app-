@@ -256,3 +256,44 @@ html,body{background:var(--canvas);color:var(--ink)}
 .copy-user-id-btn:active{transform:scale(.97)}
 .settings-pop>button:last-child{background:#fff0f1;color:#b42336}
 [data-theme="dark"] .settings-pop>button:last-child{background:#4a2934;color:#ffc1cb}
+
+
+/* Mobile auth screen: remove desktop split-layout space and avoid login scrolling. */
+@media(max-width:640px){
+  html,body{width:100%;max-width:100%;overflow-x:hidden}
+  .auth-shell{
+    display:block;
+    width:100%;
+    min-height:100svh;
+    min-height:100dvh;
+    height:auto;
+    overflow-x:hidden;
+  }
+  .auth-art{display:none!important}
+  .auth-panel{
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    width:100%;
+    min-height:100svh;
+    min-height:100dvh;
+    padding:clamp(18px,3.5dvh,30px) 7% 20px;
+    box-sizing:border-box;
+  }
+  .auth-card{width:100%;max-width:430px;margin:0 auto}
+  .auth-card .brand{margin-bottom:clamp(18px,3dvh,26px)!important}
+  .auth-card h2{font-size:clamp(25px,6.5vw,29px);margin-bottom:7px}
+  .auth-card .subtext{margin-bottom:20px;line-height:1.5}
+  .auth-card .tabs{margin-bottom:19px}
+  .auth-card .field{gap:7px;margin-bottom:13px}
+  .auth-card .field input{height:47px}
+  .auth-card .hint{margin-top:13px;line-height:1.45}
+  .auth-card .primary-btn{padding:13px 15px}
+}
+@media(max-width:380px){
+  .auth-panel{padding-top:16px;padding-bottom:16px}
+  .auth-card .brand{margin-bottom:16px!important}
+  .auth-card .subtext{margin-bottom:16px}
+  .auth-card .tabs{margin-bottom:16px}
+  .auth-card .hint{font-size:11px}
+}
