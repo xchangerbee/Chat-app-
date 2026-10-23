@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 
 type Mode = "login" | "register";
 type Profile = { id: string; public_id: string; display_name: string };
-type ChatItem = { id: string; other: Profile; last_message_at: string };
+type ChatItem = { id: string; other: Profile; last_message_at: string; last_message_preview: string; unread_count: number };
 type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
 
 
@@ -239,7 +239,7 @@ export default function Home() {
     // Fetch only conversations this signed-in user belongs to.
     const { data: memberships, error: membershipsError } = await supabase
       .from("conversation_members")
-      .select("conversation_id,joined_at")
+      .select("conversation_id,joined_at,last_read_at")
       .eq("user_id", userId)
       .order("joined_at", { ascending: false });
 
@@ -296,10 +296,41 @@ export default function Home() {
       }
 
       if (other && conversation) {
+        const { data: latestMessages, error: latestError } = await supabase
+          .from("messages")
+          .select("id,sender_id,ciphertext,nonce,created_at")
+          .eq("conversation_id", conversation.id)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        if (latestError) console.error("Latest chat preview load failed:", latestError);
+
+        const { count: unreadCount, error: unreadError } = await supabase
+          .from("messages")
+          .select("id", { count: "exact", head: true })
+          .eq("conversation_id", conversation.id)
+          .neq("sender_id", userId)
+          .is("deleted_at", null)
+          .gt("created_at", membership.last_read_at || membership.joined_at);
+        if (unreadError) console.error("Unread message count load failed:", unreadError);
+
+        let lastMessagePreview = "No messages yet";
+        const latestMessage = latestMessages?.[0];
+        if (latestMessage) {
+          lastMessagePreview = latestMessage.sender_id === userId
+            ? "You: " + await decryptMessage(supabase, userId, latestMessage.ciphertext, latestMessage.nonce)
+            : await decryptMessage(supabase, userId, latestMessage.ciphertext, latestMessage.nonce);
+          if (lastMessagePreview.includes("[This message isn't available on this device]")) {
+            lastMessagePreview = "New message";
+          }
+        }
+
         result.push({
           id: conversation.id,
           other: other as Profile,
           last_message_at: conversation.last_message_at || membership.joined_at,
+          last_message_preview: lastMessagePreview,
+          unread_count: unreadCount || 0,
         });
       }
     }
@@ -307,6 +338,17 @@ export default function Home() {
     result.sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
     setChats(result);
   }
+
+  useEffect(() => {
+    if (!profile || !supabase) return;
+    const channel = supabase.channel("chat-list-updates-" + profile.id)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, () => {
+        void loadChats(profile.id);
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id]);
 
   async function copyUserId() {
     if (!profile?.public_id) return;
@@ -544,7 +586,7 @@ export default function Home() {
       {search.length===4 && <button className="small-primary" style={{width:"100%",marginTop:9}} onClick={()=>void searchById()} disabled={searching}>{searching?"Searching…":"Find teammate"}</button>}
       {searchNotice && <div className="notice error" role="status" aria-live="polite" style={{marginTop:9,marginBottom:0}}>{searchNotice}</div>}
     </div><div className="section-label"><span>MESSAGES</span><span>{chats.length}</span></div>
-      {chats.length ? <div className="chat-list">{chats.map(chat=><button className={"chat-row "+(selectedChat?.id===chat.id?"selected":"")} key={chat.id} onClick={()=>{if (!mobileChatOpen) window.history.pushState({ chatAppView: "chat" }, "", window.location.href);setSelectedChat(chat);setMobileChatOpen(true);}}><div className="avatar">{chat.other.display_name.slice(0,1).toUpperCase()}</div><div className="chat-info"><div className="chat-name-line"><span className="chat-name">{chat.other.display_name}</span><span className="chat-time">{new Date(chat.last_message_at).toLocaleDateString()}</span></div><div className="chat-preview">Open conversation</div></div></button>)}</div> : <div className="empty-list"><MessageCircle size={20} style={{margin:"0 auto 9px",opacity:.6}}/><div>No conversations yet</div><div>Search a teammate by their 4-digit ID to start chatting.</div></div>}
+      {chats.length ? <div className="chat-list">{chats.map(chat=><button className={"chat-row "+(selectedChat?.id===chat.id?"selected":"")} key={chat.id} onClick={()=>{if (!mobileChatOpen) window.history.pushState({ chatAppView: "chat" }, "", window.location.href);setSelectedChat(chat);setMobileChatOpen(true);}}><div className="avatar">{chat.other.display_name.slice(0,1).toUpperCase()}</div><div className="chat-info"><div className="chat-name-line"><span className="chat-name">{chat.other.display_name}</span><span className="chat-time">{new Date(chat.last_message_at).toLocaleDateString()}</span></div><div className="chat-preview">{chat.unread_count > 0 ? `${chat.unread_count} new message${chat.unread_count === 1 ? "" : "s"}` : chat.last_message_preview}</div>{chat.unread_count > 0 && <span className="chat-unread-badge" aria-label={`${chat.unread_count} unread messages`}>{chat.unread_count > 99 ? "99+" : chat.unread_count}</span>}</div></button>)}</div> : <div className="empty-list"><MessageCircle size={20} style={{margin:"0 auto 9px",opacity:.6}}/><div>No conversations yet</div><div>Search a teammate by their 4-digit ID to start chatting.</div></div>}
       <div className={"side-bottom" + (settingsOpen ? " settings-expanded" : "")}>{settingsOpen && <section className="settings-pop settings-pop-inline" role="dialog" aria-label="Account settings" onClick={e=>e.stopPropagation()}><h3>Account settings</h3><p>{profile.display_name}<br/><span className="settings-user-id-label">Your User ID:</span> <strong className="settings-user-id-value">{profile.public_id}</strong> <button type="button" className="copy-user-id-btn" onClick={()=>void copyUserId()} aria-label="Copy your User ID"><span>{userIdCopied ? "Copied!" : "Copy"}</span></button><br/>Keep your 6-digit PIN private.</p><button onClick={()=>void logout()}><LogOut size={14} style={{display:"inline",verticalAlign:"-3px",marginRight:6}}/>Logout</button></section>}<div className="profile-mini"><div className="avatar">{profile.display_name.slice(0,1).toUpperCase()}</div><div className="profile-copy"><strong>{profile.display_name}</strong><span>Your ID · {profile.public_id}</span></div><button className="icon-btn" title="Account settings" aria-label="Account settings" aria-expanded={settingsOpen} onClick={()=>{if (!settingsOpen) window.history.pushState({ chatAppView: "settings" }, "", window.location.href);setSettingsOpen(open=>!open);}}><Settings size={17}/></button></div></div>
     </aside>
     <section className="main-panel"><header className="main-top"><div style={{display:"flex",alignItems:"center",gap:11}}>{selectedChat && <button className="icon-btn back-btn" onClick={()=>{setSelectedChat(null);setMobileChatOpen(false);}}><ArrowLeft size={17}/></button>}<div><div className="top-title">{selectedChat ? selectedChat.other.display_name : "Your conversations"}</div><div className="top-sub">{selectedChat ? "User ID · "+selectedChat.other.public_id : "A little more focus, a little less noise."}</div></div></div><div className="top-actions"><div className="online-pill"><span className="online-dot"></span> Your private space</div><button className="icon-btn" title="Help and privacy"><ShieldCheck size={17}/></button></div></header>
