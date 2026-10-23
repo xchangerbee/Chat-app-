@@ -7,7 +7,72 @@ type Mode = "login" | "register";
 type Profile = { id: string; public_id: string; display_name: string };
 type ChatItem = { id: string; other: Profile; last_message_at: string };
 
-function getDeviceId() {
+
+function bytesToB64(bytes: Uint8Array) {
+  let binary = "";
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary);
+}
+function b64ToBytes(value: string) {
+  return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+}
+async function ensureDeviceKey(client: any, userId: string) {
+  const storageKey = "chat_private_key_v1";
+  let privateKeyBytes: Uint8Array;
+  let publicKeyB64: string;
+  const saved = window.localStorage.getItem(storageKey);
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    privateKeyBytes = b64ToBytes(parsed.privateKey);
+    publicKeyB64 = parsed.publicKey;
+  } else {
+    const pair = await window.crypto.subtle.generateKey({ name: "RSA-OAEP", modulusLength: 2048, publicExponent: new Uint8Array([1,0,1]), hash: "SHA-256" }, true, ["encrypt", "decrypt"]);
+    privateKeyBytes = new Uint8Array(await window.crypto.subtle.exportKey("pkcs8", pair.privateKey));
+    publicKeyB64 = bytesToB64(new Uint8Array(await window.crypto.subtle.exportKey("spki", pair.publicKey)));
+    window.localStorage.setItem(storageKey, JSON.stringify({ privateKey: bytesToB64(privateKeyBytes), publicKey: publicKeyB64 }));
+  }
+  const { data: existing } = await client.from("devices").select("id").eq("user_id", userId).eq("identity_public_key", publicKeyB64).is("revoked_at", null).maybeSingle();
+  if (!existing) {
+    const { error } = await client.from("devices").insert({ user_id: userId, device_label: "This browser", identity_public_key: publicKeyB64 });
+    if (error) throw error;
+  }
+  const privateKey = await window.crypto.subtle.importKey("pkcs8", privateKeyBytes, { name: "RSA-OAEP", hash: "SHA-256" }, false, ["decrypt"]);
+  return { privateKey, publicKeyB64 };
+}
+async function encryptMessage(client: any, userId: string, recipientId: string, text: string) {
+  const { publicKeyB64: ownPublicKey } = await ensureDeviceKey(client, userId);
+  const { data: devices, error } = await client.from("devices").select("user_id,identity_public_key").in("user_id", [userId, recipientId]).is("revoked_at", null);
+  if (error) throw error;
+  const keys = new Map<string, string>();
+  for (const device of (devices || [])) if (!keys.has(device.user_id)) keys.set(device.user_id, device.identity_public_key);
+  keys.set(userId, ownPublicKey);
+  if (!keys.has(recipientId)) throw new Error("Your teammate needs to open the app once to set up secure messaging.");
+  const aesKey = await window.crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+  const body = new Uint8Array(await window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, aesKey, new TextEncoder().encode(text)));
+  const rawAesKey = await window.crypto.subtle.exportKey("raw", aesKey);
+  const wrapped: Record<string, string> = {};
+  for (const [memberId, keyB64] of keys) {
+    const publicKey = await window.crypto.subtle.importKey("spki", b64ToBytes(keyB64), { name: "RSA-OAEP", hash: "SHA-256" }, false, ["encrypt"]);
+    wrapped[memberId] = bytesToB64(new Uint8Array(await window.crypto.subtle.encrypt({ name: "RSA-OAEP" }, publicKey, rawAesKey)));
+  }
+  return { ciphertext: JSON.stringify({ v: 1, body: bytesToB64(body), keys: wrapped }), nonce: bytesToB64(iv) };
+}
+async function decryptMessage(client: any, userId: string, ciphertext: string, nonce: string) {
+  try {
+    const packet = JSON.parse(ciphertext) as { v: number; body: string; keys: Record<string, string> };
+    if (packet.v !== 1 || !packet.keys?.[userId]) return "[This message isn't available on this device]";
+    const { privateKey } = await ensureDeviceKey(client, userId);
+    const rawKey = await window.crypto.subtle.decrypt({ name: "RSA-OAEP" }, privateKey, b64ToBytes(packet.keys[userId]));
+    const aesKey = await window.crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["decrypt"]);
+    const plain = await window.crypto.subtle.decrypt({ name: "AES-GCM", iv: b64ToBytes(nonce) }, aesKey, b64ToBytes(packet.body));
+    return new TextDecoder().decode(plain);
+  } catch {
+    return "[Unable to decrypt this message on this device]";
+  }
+}
+type MessageItem = { id: string; conversation_id: string; sender_id: string; ciphertext: string; nonce: string; created_at: string; text?: string };
+\nfunction getDeviceId() {
   if (typeof window === "undefined") return "server-render-device-id";
   const key = "chat_device_id";
   let id = window.localStorage.getItem(key);
@@ -29,7 +94,7 @@ export default function Home() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedChat, setSelectedChat] = useState<ChatItem | null>(null);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
-  const [searching, setSearching] = useState(false);
+  const [searching, setSearching] = useState(false);\n  const [messages, setMessages] = useState<MessageItem[]>([]);\n  const [draft, setDraft] = useState("");\n  const [sending, setSending] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -50,7 +115,7 @@ export default function Home() {
   async function loadProfile(userId: string) {
     if (!supabase) return;
     const { data } = await supabase.from("profiles").select("id,public_id,display_name").eq("id", userId).maybeSingle();
-    if (data) { setProfile(data as Profile); await loadChats(userId); }
+    if (data) { setProfile(data as Profile); await loadChats(userId); try { await ensureDeviceKey(supabase, userId); } catch (e) { console.error("Secure device setup failed", e); } }
   }
 
   async function loadChats(userId: string) {
@@ -110,6 +175,55 @@ export default function Home() {
       setNotice(message); setIsError(true);
     } finally { setBusy(false); }
   }
+
+
+  async function loadMessages(chat: ChatItem, userId: string) {
+    if (!supabase) return;
+    const { data, error } = await supabase.from("messages").select("id,conversation_id,sender_id,ciphertext,nonce,created_at").eq("conversation_id", chat.id).is("deleted_at", null).order("created_at", { ascending: true }).limit(200);
+    if (error) { setNotice("Couldn't load messages. Please refresh and try again."); setIsError(true); return; }
+    const rows = (data || []) as MessageItem[];
+    const decoded = await Promise.all(rows.map(async row => ({ ...row, text: await decryptMessage(supabase, userId, row.ciphertext, row.nonce) })));
+    setMessages(decoded);
+    const incoming = rows.filter(row => row.sender_id !== userId).map(row => row.id);
+    if (incoming.length) {
+      await supabase.from("message_receipts").update({ delivered_at: new Date().toISOString() }).eq("user_id", userId).in("message_id", incoming).is("delivered_at", null);
+    }
+  }
+
+  async function sendMessage(e: React.FormEvent) {
+    e.preventDefault();
+    const text = draft.trim();
+    if (!text || !selectedChat || !profile || !supabase || sending) return;
+    setSending(true); setNotice(""); setIsError(false);
+    try {
+      const encrypted = await encryptMessage(supabase, profile.id, selectedChat.other.id, text);
+      const { data, error } = await supabase.from("messages").insert({ conversation_id: selectedChat.id, sender_id: profile.id, ciphertext: encrypted.ciphertext, nonce: encrypted.nonce, key_version: 1 }).select("id,conversation_id,sender_id,ciphertext,nonce,created_at").single();
+      if (error) throw error;
+      setDraft("");
+      setMessages(current => [...current, { ...(data as MessageItem), text }]);
+      await loadChats(profile.id);
+    } catch (error) {
+      console.error("Message send failed", error);
+      setNotice(error instanceof Error ? error.message : "Message couldn't be sent. Please try again.");
+      setIsError(true);
+    } finally { setSending(false); }
+  }
+
+  useEffect(() => {
+    if (!selectedChat || !profile || !supabase) { setMessages([]); return; }
+    void loadMessages(selectedChat, profile.id);
+    const channel = supabase.channel("messages-" + selectedChat.id)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: "conversation_id=eq." + selectedChat.id }, (payload) => {
+        const row = payload.new as MessageItem;
+        if (row.sender_id === profile.id) return;
+        void decryptMessage(supabase, profile.id, row.ciphertext, row.nonce).then(async text => {
+          setMessages(current => current.some(message => message.id === row.id) ? current : [...current, { ...row, text }]);
+          await supabase.from("message_receipts").update({ delivered_at: new Date().toISOString() }).eq("message_id", row.id).eq("user_id", profile.id);
+        });
+      }).subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedChat?.id, profile?.id]);
 
   async function searchById() {
     if (!supabase || !/^\d{4}$/.test(search)) { setNotice("Enter a valid 4-digit user ID."); setIsError(true); return; }
@@ -183,7 +297,13 @@ export default function Home() {
       <div className="side-bottom"><div className="profile-mini"><div className="avatar">{profile.display_name.slice(0,1).toUpperCase()}</div><div className="profile-copy"><strong>{profile.display_name}</strong><span>Your ID · {profile.public_id}</span></div><button className="icon-btn" title="Account settings" onClick={()=>setSettingsOpen(!settingsOpen)}><ChevronDown size={15}/></button></div></div>
     </aside>
     <section className="main-panel"><header className="main-top"><div style={{display:"flex",alignItems:"center",gap:11}}>{selectedChat && <button className="icon-btn back-btn" onClick={()=>{setSelectedChat(null);setMobileChatOpen(false);}}><ArrowLeft size={17}/></button>}<div><div className="top-title">{selectedChat ? selectedChat.other.display_name : "Your conversations"}</div><div className="top-sub">{selectedChat ? "User ID · "+selectedChat.other.public_id : "A little more focus, a little less noise."}</div></div></div><div className="top-actions"><div className="online-pill"><span className="online-dot"></span> Private workspace</div><button className="icon-btn" title="Help and privacy"><ShieldCheck size={17}/></button></div></header>
-      {selectedChat ? <div className="chat-view"><div className="chat-placeholder"><div className="welcome-icon"><LockKeyhole size={28}/></div><h3 style={{fontFamily:"Manrope",color:"#263047"}}>Secure messaging is being prepared</h3><p>Messages will be enabled after end-to-end encryption and delivery receipts are implemented and tested. Your message content will not be sent as plaintext.</p></div><div className="composer"><div className="composer-inner"><span>Secure message composer · not enabled yet</span><LockKeyhole size={15}/></div></div></div> : <div className="content-center"><div className="welcome-card"><div className="welcome-icon"><Sparkles size={30}/></div><h2>Your space, your people.</h2><p>Start a private one-to-one conversation by searching for a teammate using their 4-digit user ID.</p><button className="small-primary" onClick={()=>document.querySelector<HTMLInputElement>(".search-wrap input")?.focus()}><Plus size={15} style={{display:"inline",verticalAlign:"-3px",marginRight:6}}/>Find a teammate</button><div style={{display:"flex",justifyContent:"center",gap:18,marginTop:28,color:"#9aa2b3",fontSize:11}}><span><ShieldCheck size={13} style={{display:"inline",verticalAlign:"-3px",marginRight:4}}/>Privacy-first</span><span><Users size={13} style={{display:"inline",verticalAlign:"-3px",marginRight:4}}/>1:1 only</span></div></div></div>}
+      {selectedChat ? <div className="chat-view">
+        <div className="messages-list">
+          {messages.length ? messages.map(message => <div key={message.id} className={"message-line " + (message.sender_id === profile.id ? "mine" : "theirs")}><div className="message-bubble">{message.text || "Decrypting…"}</div><span className="message-meta">{new Date(message.created_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}{message.sender_id === profile.id ? " · Sent" : ""}</span></div>) : <div className="chat-placeholder"><div className="welcome-icon"><LockKeyhole size={28}/></div><h3 style={{fontFamily:"Manrope",color:"#263047"}}>Start your conversation</h3><p>Messages are encrypted on this device before they are saved. Keep your browser data safe so this device can decrypt its messages.</p></div>}
+        </div>
+        {notice && <div className={"notice " + (isError ? "error" : "")} style={{margin:"0 20px 10px"}}>{notice}</div>}
+        <form className="composer" onSubmit={sendMessage}><div className="composer-inner active"><textarea aria-label="Message" value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Write a secure message…" maxLength={4000} rows={1}/><button className="send-btn" type="submit" disabled={!draft.trim() || sending} aria-label="Send message">{sending ? "…" : <ArrowRight size={18}/>}</button></div><div className="composer-foot"><LockKeyhole size={12}/> Encrypted on this device · Never share your PIN</div></form>
+      </div> : <div className="content-center"><div className="welcome-card"><div className="welcome-icon"><Sparkles size={30}/></div><h2>Your space, your people.</h2><p>Start a private one-to-one conversation by searching for a teammate using their 4-digit user ID.</p><button className="small-primary" onClick={()=>document.querySelector<HTMLInputElement>(".search-wrap input")?.focus()}><Plus size={15} style={{display:"inline",verticalAlign:"-3px",marginRight:6}}/>Find a teammate</button><div style={{display:"flex",justifyContent:"center",gap:18,marginTop:28,color:"#9aa2b3",fontSize:11}}><span><ShieldCheck size={13} style={{display:"inline",verticalAlign:"-3px",marginRight:4}}/>Privacy-first</span><span><Users size={13} style={{display:"inline",verticalAlign:"-3px",marginRight:4}}/>1:1 only</span></div></div></div>}
     </section>
     {settingsOpen && <div className="settings-pop"><h3>Account settings</h3><p>{profile.display_name}<br/>Shareable user ID: <strong>{profile.public_id}</strong><br/>Keep your 6-digit PIN private.</p><button onClick={()=>void logout()}><LogOut size={14} style={{display:"inline",verticalAlign:"-3px",marginRight:6}}/>Sign out</button></div>}
   </main>;
