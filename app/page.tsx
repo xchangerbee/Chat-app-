@@ -105,11 +105,18 @@ export default function Home() {
   const [selectedChat, setSelectedChat] = useState<ChatItem | null>(null);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [searchNotice, setSearchNotice] = useState("");
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
+
+  useEffect(() => {
+    if (!searchNotice) return;
+    const timeoutId = window.setTimeout(() => setSearchNotice(""), 3500);
+    return () => window.clearTimeout(timeoutId);
+  }, [searchNotice]);
 
   useEffect(() => {
     // Track the visible mobile viewport so the chat stays above the Android
@@ -325,11 +332,17 @@ export default function Home() {
   }, [selectedChat?.id, profile?.id]);
 
   async function searchById() {
-    if (!supabase || !/^\d{4}$/.test(search)) { setNotice("Enter a valid 4-digit user ID."); setIsError(true); return; }
-    setSearching(true); setNotice(""); setIsError(false);
-    const { data, error } = await supabase.from("profiles").select("id,public_id,display_name").eq("public_id", search).maybeSingle();
-    if (error || !data) { setNotice("No matching member found."); setIsError(true); setSearching(false); return; }
-    if (data.id === profile?.id) { setNotice("That is your own user ID."); setIsError(true); setSearching(false); return; }
+    if (!supabase || !/^\d{4}$/.test(search)) { setSearchNotice("Enter a valid 4-digit user ID."); return; }
+    setSearching(true); setSearchNotice(""); setNotice(""); setIsError(false);
+    const searchedId = search;
+    const { data, error } = await supabase.from("profiles").select("id,public_id,display_name").eq("public_id", searchedId).maybeSingle();
+    if (error || !data) {
+      setSearch("");
+      setSearchNotice("No matching member found.");
+      setSearching(false);
+      return;
+    }
+    if (data.id === profile?.id) { setSearchNotice("That is your own user ID."); setSearching(false); return; }
     const { data: conversationId, error: startError } = await supabase.rpc("start_one_to_one_conversation", { p_target_public_id: search });
     if (startError || !conversationId) {
       setNotice("Could not start the conversation. Please try again.");
@@ -341,6 +354,7 @@ export default function Home() {
     setSelectedChat({ id: conversationId as string, other: target, last_message_at: new Date().toISOString() });
     setMobileChatOpen(true);
     setSearch("");
+    setSearchNotice("");
     if (profile) await loadChats(profile.id);
     setSearching(false);
   }
@@ -388,9 +402,9 @@ export default function Home() {
 
   return <main className={"app-shell " + (mobileChatOpen ? "chat-open" : "")}>
     <aside className="sidebar"><div className="side-top"><div className="side-brand"><div className="brand"><span className="brand-mark"><MessageCircle size={18}/></span> chat.</div><button className="icon-btn" title="Settings" onClick={() => setSettingsOpen(!settingsOpen)}><Settings size={17}/></button></div>
-      <div className="search-wrap"><Search size={15}/><input value={search} onChange={e=>setSearch(e.target.value.replace(/\D/g,"").slice(0,4))} inputMode="numeric" placeholder="Find by 4-digit user ID" onKeyDown={e=>{if(e.key==="Enter")void searchById();}}/></div>
+      <div className="search-wrap"><Search size={15}/><input value={search} onChange={e=>{setSearch(e.target.value.replace(/\D/g,"").slice(0,4));setSearchNotice("");}} inputMode="numeric" placeholder="Find by 4-digit user ID" onKeyDown={e=>{if(e.key==="Enter")void searchById();}}/></div>
       {search.length===4 && <button className="small-primary" style={{width:"100%",marginTop:9}} onClick={()=>void searchById()} disabled={searching}>{searching?"Searching…":"Find teammate"}</button>}
-      {notice && <div className={"notice " + (isError ? "error" : "")} style={{marginTop:9,marginBottom:0}}>{notice}</div>}
+      {searchNotice && <div className="notice error" role="status" aria-live="polite" style={{marginTop:9,marginBottom:0}}>{searchNotice}</div>}
     </div><div className="section-label"><span>MESSAGES</span><span>{chats.length}</span></div>
       {chats.length ? <div className="chat-list">{chats.map(chat=><button className={"chat-row "+(selectedChat?.id===chat.id?"selected":"")} key={chat.id} onClick={()=>{setSelectedChat(chat);setMobileChatOpen(true);}}><div className="avatar">{chat.other.display_name.slice(0,1).toUpperCase()}</div><div className="chat-info"><div className="chat-name-line"><span className="chat-name">{chat.other.display_name}</span><span className="chat-time">{new Date(chat.last_message_at).toLocaleDateString()}</span></div><div className="chat-preview">Open conversation</div></div></button>)}</div> : <div className="empty-list"><MessageCircle size={20} style={{margin:"0 auto 9px",opacity:.6}}/><div>No conversations yet</div><div>Search a teammate by their 4-digit ID to start chatting.</div></div>}
       <div className="side-bottom"><div className="profile-mini"><div className="avatar">{profile.display_name.slice(0,1).toUpperCase()}</div><div className="profile-copy"><strong>{profile.display_name}</strong><span>Your ID · {profile.public_id}</span></div><button className="icon-btn" title="Account settings" onClick={()=>setSettingsOpen(!settingsOpen)}><ChevronDown size={15}/></button></div></div>
