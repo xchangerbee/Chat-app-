@@ -36,7 +36,8 @@ async function ensureDeviceKey(client: any, userId: string) {
     const { error } = await client.from("devices").insert({ user_id: userId, device_label: "This browser", identity_public_key: publicKeyB64 });
     if (error) throw error;
   }
-  const privateKey = await window.crypto.subtle.importKey("pkcs8", privateKeyBytes, { name: "RSA-OAEP", hash: "SHA-256" }, false, ["decrypt"]);
+  const privateKeyBuffer = Uint8Array.from(privateKeyBytes).buffer;
+  const privateKey = await window.crypto.subtle.importKey("pkcs8", privateKeyBuffer, { name: "RSA-OAEP", hash: "SHA-256" }, false, ["decrypt"]);
   return { privateKey, publicKeyB64 };
 }
 async function encryptMessage(client: any, userId: string, recipientId: string, text: string) {
