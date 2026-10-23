@@ -436,7 +436,7 @@ export default function Home() {
       return;
     }
     const target = data as Profile;
-    window.history.pushState({ chatAppView: "chat" }, "", window.location.href);
+    if (!mobileChatOpen) window.history.pushState({ chatAppView: "chat" }, "", window.location.href);
     setSelectedChat({ id: conversationId as string, other: target, last_message_at: new Date().toISOString() });
     setMobileChatOpen(true);
     setSearch("");
