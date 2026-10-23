@@ -72,7 +72,8 @@ async function decryptMessage(client: any, userId: string, ciphertext: string, n
   }
 }
 type MessageItem = { id: string; conversation_id: string; sender_id: string; ciphertext: string; nonce: string; created_at: string; text?: string };
-\nfunction getDeviceId() {
+
+function getDeviceId() {
   if (typeof window === "undefined") return "server-render-device-id";
   const key = "chat_device_id";
   let id = window.localStorage.getItem(key);
