@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, CircleHelp, LockKeyhole, LogOut, MessageCircle, MoreHorizontal, Plus, Search, Settings, ShieldCheck, Sparkles, Users, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, LockKeyhole, LogOut, MessageCircle, MoreHorizontal, Plus, Search, Settings, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 type Mode = "login" | "register";
 type Profile = { id: string; public_id: string; display_name: string };
 type ChatItem = { id: string; other: Profile; last_message_at: string };
-type SupabaseClient = ReturnType<typeof createClient>;
+type SupabaseClient = NonNullable<ReturnType<typeof createClient>>;
 
 
 function bytesToB64(bytes: Uint8Array) {
