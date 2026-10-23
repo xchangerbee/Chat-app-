@@ -280,6 +280,7 @@ export default function Home() {
   }
 
   async function copyUserId() {
+    if (!profile?.public_id) return;
     try {
       await navigator.clipboard.writeText(profile.public_id);
       setUserIdCopied(true);
