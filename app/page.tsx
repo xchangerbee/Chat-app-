@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, ChevronDown, LockKeyhole, LogOut, MessageCircle, MoreHorizontal, Plus, Search, Settings, ShieldCheck, Sparkles, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, LockKeyhole, LogOut, MessageCircle, MoreHorizontal, Plus, Search, Settings, ShieldCheck, Sparkles, Users, Sun, Moon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 type Mode = "login" | "register";
@@ -102,6 +102,7 @@ export default function Home() {
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [search, setSearch] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [selectedChat, setSelectedChat] = useState<ChatItem | null>(null);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -111,6 +112,24 @@ export default function Home() {
   const [sending, setSending] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
+
+  useEffect(() => {
+    try {
+      const savedTheme = window.localStorage.getItem("chat_theme");
+      if (savedTheme === "dark" || savedTheme === "light") setTheme(savedTheme);
+    } catch {
+      // Keep the default light theme if browser storage is unavailable.
+    }
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      window.localStorage.setItem("chat_theme", theme);
+    } catch {
+      // Theme still applies for the current session if storage is unavailable.
+    }
+  }, [theme]);
 
   useEffect(() => {
     if (!searchNotice) return;
@@ -400,14 +419,14 @@ export default function Home() {
     </div></section>
   </main>;
 
-  return <main className={"app-shell " + (mobileChatOpen ? "chat-open" : "")}>
-    <aside className="sidebar"><div className="side-top"><div className="side-brand"><div className="brand"><span className="brand-mark"><MessageCircle size={18}/></span> chat.</div><button className="icon-btn" title="Settings" onClick={() => setSettingsOpen(!settingsOpen)}><Settings size={17}/></button></div>
+  return <main className={"app-shell theme-" + theme + " " + (mobileChatOpen ? "chat-open" : "")}>
+    <aside className="sidebar"><div className="side-top"><div className="side-brand"><div className="brand"><span className="brand-mark"><MessageCircle size={18}/></span> chat.</div><button className="icon-btn theme-toggle" type="button" title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"} aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"} aria-pressed={theme === "dark"} onClick={() => setTheme(current => current === "light" ? "dark" : "light")}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}</button></div>
       <div className="search-wrap"><Search size={15}/><input value={search} onChange={e=>{setSearch(e.target.value.replace(/\D/g,"").slice(0,4));setSearchNotice("");}} inputMode="numeric" placeholder="Find by 4-digit user ID" onKeyDown={e=>{if(e.key==="Enter")void searchById();}}/></div>
       {search.length===4 && <button className="small-primary" style={{width:"100%",marginTop:9}} onClick={()=>void searchById()} disabled={searching}>{searching?"Searching…":"Find teammate"}</button>}
       {searchNotice && <div className="notice error" role="status" aria-live="polite" style={{marginTop:9,marginBottom:0}}>{searchNotice}</div>}
     </div><div className="section-label"><span>MESSAGES</span><span>{chats.length}</span></div>
       {chats.length ? <div className="chat-list">{chats.map(chat=><button className={"chat-row "+(selectedChat?.id===chat.id?"selected":"")} key={chat.id} onClick={()=>{setSelectedChat(chat);setMobileChatOpen(true);}}><div className="avatar">{chat.other.display_name.slice(0,1).toUpperCase()}</div><div className="chat-info"><div className="chat-name-line"><span className="chat-name">{chat.other.display_name}</span><span className="chat-time">{new Date(chat.last_message_at).toLocaleDateString()}</span></div><div className="chat-preview">Open conversation</div></div></button>)}</div> : <div className="empty-list"><MessageCircle size={20} style={{margin:"0 auto 9px",opacity:.6}}/><div>No conversations yet</div><div>Search a teammate by their 4-digit ID to start chatting.</div></div>}
-      <div className="side-bottom"><div className="profile-mini"><div className="avatar">{profile.display_name.slice(0,1).toUpperCase()}</div><div className="profile-copy"><strong>{profile.display_name}</strong><span>Your ID · {profile.public_id}</span></div><button className="icon-btn" title="Account settings" onClick={()=>setSettingsOpen(!settingsOpen)}><ChevronDown size={15}/></button></div></div>
+      <div className="side-bottom"><div className="profile-mini"><div className="avatar">{profile.display_name.slice(0,1).toUpperCase()}</div><div className="profile-copy"><strong>{profile.display_name}</strong><span>Your ID · {profile.public_id}</span></div><button className="icon-btn" title="Account settings" aria-label="Account settings" onClick={()=>setSettingsOpen(!settingsOpen)}><Settings size={17}/></button></div></div>
     </aside>
     <section className="main-panel"><header className="main-top"><div style={{display:"flex",alignItems:"center",gap:11}}>{selectedChat && <button className="icon-btn back-btn" onClick={()=>{setSelectedChat(null);setMobileChatOpen(false);}}><ArrowLeft size={17}/></button>}<div><div className="top-title">{selectedChat ? selectedChat.other.display_name : "Your conversations"}</div><div className="top-sub">{selectedChat ? "User ID · "+selectedChat.other.public_id : "A little more focus, a little less noise."}</div></div></div><div className="top-actions"><div className="online-pill"><span className="online-dot"></span> Private workspace</div><button className="icon-btn" title="Help and privacy"><ShieldCheck size={17}/></button></div></header>
       {selectedChat ? <div className="chat-view">
