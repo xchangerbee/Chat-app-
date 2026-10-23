@@ -96,6 +96,7 @@ export default function Home() {
   const [pin, setPin] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [lockoutSeconds, setLockoutSeconds] = useState(0);
   const [notice, setNotice] = useState("");
   const [isError, setIsError] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -112,6 +113,14 @@ export default function Home() {
   const [sending, setSending] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
+
+  useEffect(() => {
+    if (lockoutSeconds <= 0) return;
+    const timerId = window.setInterval(() => {
+      setLockoutSeconds(seconds => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => window.clearInterval(timerId);
+  }, [lockoutSeconds > 0]);
 
   useEffect(() => {
     try {
@@ -270,7 +279,9 @@ export default function Home() {
   }
 
   async function submitAuth(e: React.FormEvent) {
-    e.preventDefault(); setNotice(""); setIsError(false);
+    e.preventDefault();
+    if (mode === "login" && lockoutSeconds > 0) return;
+    setNotice(""); setIsError(false);
     if (mode === "register" && displayName.trim().length < 2) { setNotice("Please enter a name with at least 2 characters."); setIsError(true); return; }
     if (mode === "register" && !inviteCode.trim() && !new URLSearchParams(window.location.search).get("invite")) { setNotice("Enter your team invitation code to register."); setIsError(true); return; }
     if (!/^\d{6}$/.test(pin)) { setNotice("Enter your 6-digit PIN."); setIsError(true); return; }
@@ -296,20 +307,25 @@ export default function Home() {
           const serverMessage = payload.error || payload.message;
           if (response.status === 403) message = "Invalid invitation code. Check it and try again.";
           else if (response.status === 401) message = "Incorrect PIN. Please try again.";
-          else if (response.status === 429) message = (serverMessage && /seconds|wait/i.test(serverMessage)) ? serverMessage : "Too many attempts. Please wait a little before trying again.";
+          else if (response.status === 429) {
+            message = (serverMessage && /seconds|wait/i.test(serverMessage)) ? serverMessage : "Too many attempts. Please wait a little before trying again.";
+            const remaining = serverMessage?.match(/(\\d+)\\s*seconds?/i);
+            setLockoutSeconds(remaining ? Math.min(30, Math.max(1, Number(remaining[1]))) : 30);
+          }
           else if (response.status >= 500) message = "The authentication service is temporarily unavailable. Please try again later.";
           else if (serverMessage && serverMessage.length <= 180) message = serverMessage;
         } catch {
           const status = response.status;
           if (status === 401) message = "Incorrect PIN. Please try again.";
           else if (status === 403) message = "Invalid invitation code. Check it and try again.";
-          else if (status === 429) message = "Too many attempts. Please wait a little before trying again.";
+          else if (status === 429) { message = "Too many attempts. Please wait a little before trying again."; setLockoutSeconds(30); }
           else if (status >= 500) message = "The authentication service is temporarily unavailable. Please try again later.";
         }
       } else if (err instanceof Error && err.message && !/non-2xx|edge function/i.test(err.message)) {
         message = err.message;
       }
-      setNotice(message); setIsError(true);
+      if (mode === "login" && lockoutSeconds > 0) { setNotice(""); setIsError(false); }
+      else { setNotice(message); setIsError(true); }
     } finally { setBusy(false); }
   }
 
@@ -424,8 +440,8 @@ export default function Home() {
       <form onSubmit={submitAuth}>
         {mode === "register" && <><div className="field"><label htmlFor="displayName">Your display name</label><input id="displayName" autoComplete="off" maxLength={40} placeholder="e.g. Alex Morgan" value={displayName} onChange={e => setDisplayName(e.target.value)} required/></div><div className="field"><label htmlFor="inviteCode">Team invitation code</label><input id="inviteCode" type="password" autoComplete="off" maxLength={128} placeholder="Enter invitation code" value={inviteCode} onChange={e => setInviteCode(e.target.value)} required={!new URLSearchParams(typeof window === "undefined" ? "" : window.location.search).get("invite")}/><span style={{fontSize:11,color:"#929bad"}}>Ask your app administrator for an invitation code. Keep it private.</span></div></> }
         <div className="field"><label htmlFor="pin">6-digit PIN</label><input id="pin" className="pin-input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="••••••" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, "").slice(0,6))} required/><span style={{fontSize:11,color:"#929bad"}}>{mode === "register" ? "Your PIN must be unique. Never reuse a PIN from another account." : "After 3 incorrect attempts, sign-in is paused for 30 seconds."}</span></div>
-        {notice && <div className={"notice " + (isError ? "error" : "")}>{notice}</div>}
-        <button className="primary-btn" disabled={busy}>{busy ? "Please wait…" : mode === "login" ? "Continue securely" : "Create account"} <span style={{float:"right"}}><ArrowRight size={16}/></span></button>
+        {mode === "login" && lockoutSeconds > 0 ? <div className="pin-lockout" role="status" aria-live="polite"><div className="pin-lockout-head"><span className="pin-lockout-copy"><LockKeyhole size={15}/><span><strong>Too many attempts</strong><small>You can try again in</small></span></span><strong className="pin-lockout-time">{String(Math.floor(lockoutSeconds / 60)).padStart(2,"0")}:{String(lockoutSeconds % 60).padStart(2,"0")}</strong></div><div className="pin-lockout-track"><div className="pin-lockout-progress" style={{width: (lockoutSeconds / 30 * 100) + "%"}}/></div></div> : notice && <div className={"notice " + (isError ? "error" : "")}>{notice}</div>}
+        <button className="primary-btn" disabled={busy || (mode === "login" && lockoutSeconds > 0)}>{busy ? "Please wait…" : mode === "login" ? "Continue securely" : "Create account"} <span style={{float:"right"}}><ArrowRight size={16}/></span></button>
       </form>
       <p className="hint"><LockKeyhole size={13} style={{display:"inline",verticalAlign:"-2px",marginRight:5}}/> Private team access. Share your 4-digit user ID with teammates, never your PIN.</p>
     </div></section>
