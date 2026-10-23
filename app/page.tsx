@@ -434,12 +434,13 @@ export default function Home() {
       const { error } = await supabase.from("message_receipts").update({ delivered_at: seenAt, seen_at: seenAt }).eq("user_id", userId).in("message_id", incomingIds).is("seen_at", null);
       if (error) console.error("Mark messages seen failed:", error);
     }
-    const { error: readError } = await supabase.from("conversation_members").update({ last_read_at: new Date().toISOString() }).eq("conversation_id", chat.id).eq("user_id", userId);
+    const { error: readError } = await supabase.rpc("mark_conversation_read", { p_conversation_id: chat.id });
     if (readError) {
       console.error("Conversation read position update failed:", readError);
       return;
     }
-    // Refresh the conversation list after persisting the read position so unread counts clear immediately.
+    // Clear this row immediately, then reload the persisted unread count from the database.
+    setChats(current => current.map(item => item.id === chat.id ? { ...item, unread_count: 0 } : item));
     await loadChats(userId);
   }
 
