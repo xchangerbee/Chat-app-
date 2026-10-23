@@ -166,3 +166,11 @@ html[data-theme="dark"] .side-bottom{border-color:#30384b}
 @media(prefers-reduced-motion:reduce){
   .settings-overlay,.settings-pop{animation:none!important}
 }
+
+
+/* Account settings expands from within the anchored bottom profile section. */
+.side-bottom.settings-expanded{padding-top:12px}
+.side-bottom .settings-pop-inline{width:100%;max-width:none;margin:0 0 8px;padding:18px;background:var(--paper,#fff);border:1px solid var(--line);border-radius:18px;box-shadow:none;transform-origin:bottom center;animation:profile-settings-expand .24s cubic-bezier(.2,.8,.2,1);}
+@keyframes profile-settings-expand{from{opacity:0;transform:translateY(18px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:640px){.side-bottom .settings-pop-inline{padding:16px;border-radius:18px;margin-bottom:8px}}
+@media(prefers-reduced-motion:reduce){.side-bottom .settings-pop-inline{animation:none!important}}
