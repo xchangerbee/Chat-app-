@@ -232,3 +232,19 @@ html,body{background:var(--canvas);color:var(--ink)}
   .app-shell.chat-open .messages-list{background:var(--canvas)}
 }
 /* Native browser/status-bar chrome follows the same persisted theme. */
+
+
+/* Compact live PIN lockout countdown */
+.pin-lockout{margin:0 0 17px;padding:13px 14px;border:1px solid #dfe3ff;border-radius:13px;background:#f1f3ff;color:#303a62}
+.pin-lockout-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.pin-lockout-copy{display:flex;align-items:center;gap:9px;color:#5a63e8}
+.pin-lockout-copy span{display:flex;flex-direction:column;gap:3px}
+.pin-lockout-copy strong{font-size:12px;font-weight:700;color:#303a62}
+.pin-lockout-copy small{font-size:11px;color:#737d98}
+.pin-lockout-time{font-variant-numeric:tabular-nums;font-size:18px;letter-spacing:.3px;color:#5a63e8}
+.pin-lockout-track{height:4px;margin-top:11px;overflow:hidden;border-radius:99px;background:#dce1fa}
+.pin-lockout-progress{height:100%;border-radius:99px;background:#5a63e8;transition:width .25s linear}
+[data-theme="dark"] .pin-lockout{background:#222943;border-color:#3a4567;color:#e7eaff}
+[data-theme="dark"] .pin-lockout-copy strong{color:#e7eaff}
+[data-theme="dark"] .pin-lockout-copy small{color:#aeb8d7}
+[data-theme="dark"] .pin-lockout-track{background:#3a4567}
