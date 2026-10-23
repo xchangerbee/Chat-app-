@@ -138,7 +138,7 @@ export default function Home() {
     const result: ChatItem[] = [];
     for (const membership of memberships) {
       const { data: members } = await supabase.from("conversation_members").select("user_id,profiles(id,public_id,display_name)").eq("conversation_id", membership.conversation_id);
-      const other = (members || []).map((m: { user_id: string; profiles: Profile | null }) => m.profiles).find((p: Profile | null) => p && p.id !== userId);
+      const other = (members || []).flatMap((m) => m.profiles || []).find((p) => p.id !== userId);
       const { data: conversation } = await supabase.from("conversations").select("id,last_message_at").eq("id", membership.conversation_id).maybeSingle();
       if (other && conversation) result.push({ id: conversation.id, other, last_message_at: conversation.last_message_at });
     }
