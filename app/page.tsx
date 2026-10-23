@@ -324,7 +324,7 @@ export default function Home() {
       } else if (err instanceof Error && err.message && !/non-2xx|edge function/i.test(err.message)) {
         message = err.message;
       }
-      if (mode === "login" && lockoutSeconds > 0) { setNotice(""); setIsError(false); }
+      if (mode === "login" && ((response instanceof Response && response.status === 429) || lockoutSeconds > 0)) { setNotice(""); setIsError(false); }
       else { setNotice(message); setIsError(true); }
     } finally { setBusy(false); }
   }
