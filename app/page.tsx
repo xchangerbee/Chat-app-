@@ -567,14 +567,14 @@ export default function Home() {
 
   if (!profile) return <main className="auth-shell">
     <section className="auth-art">
-      <div className="brand"><span className="brand-mark"><MessageCircle size={19} strokeWidth={2.5}/></span> chat.</div>
+      <div className="brand"><span className="brand-mark"><MessageCircle size={19} strokeWidth={2.5}/></span> Aerocity</div>
       <div className="art-copy"><h1>Good conversations.<br/><span>Less noise.</span></h1><p>A quieter, more thoughtful space for your team&apos;s one-to-one conversations. Just your people, all in one place.</p>
         <div className="floating-chat"><div className="float-head"><div className="avatar">A</div><div><strong style={{fontSize:13}}>Aarav Mehta</strong><div style={{fontSize:11,color:"#8b94a7",marginTop:3}}>Online now</div></div><span style={{marginLeft:"auto",color:"#7c86a0"}}><MoreHorizontal size={19}/></span></div><div className="bubble left">Hey! I&apos;ve shared the updated plan with you.</div><div className="bubble right">Got it, thanks. I&apos;ll take a look ✨</div><div className="bubble left" style={{width:"61%"}}>Perfect. No rush!</div></div>
       </div>
       <div className="art-foot">Thoughtfully made for small teams · Private by design</div>
     </section>
     <section className="auth-panel"><div className="auth-card">
-      <div className="brand" style={{marginBottom:35}}><span className="brand-mark"><MessageCircle size={19} strokeWidth={2.5}/></span> chat.</div>
+      <div className="brand" style={{marginBottom:35}}><span className="brand-mark"><MessageCircle size={19} strokeWidth={2.5}/></span> Aerocity</div>
       <h2>{mode === "login" ? "Welcome back" : "Create your account"}</h2><p className="subtext">{mode === "login" ? "Enter your private PIN to continue to your chats." : "Choose a display name and a unique 6-digit PIN."}</p>
       <div className="tabs"><button className={mode === "login" ? "active" : ""} onClick={() => {setMode("login");setNotice("");setIsError(false);setDisplayName("");setPin("");setInviteCode("");}}>Log in</button><button className={mode === "register" ? "active" : ""} onClick={() => {setMode("register");setNotice("");setIsError(false);setDisplayName("");setPin("");setInviteCode("");}}>Register</button></div>
       <form onSubmit={submitAuth}>
@@ -588,7 +588,7 @@ export default function Home() {
   </main>;
 
   return <main className={"app-shell theme-" + theme + " " + (mobileChatOpen ? "chat-open" : "")}>
-    <aside className="sidebar"><div className="side-top"><div className="side-brand"><div className="brand"><span className="brand-mark"><MessageCircle size={18}/></span> chat.</div><button className="icon-btn theme-toggle" type="button" title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"} aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"} aria-pressed={theme === "dark"} onClick={() => setTheme(current => current === "light" ? "dark" : "light")}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}</button></div>
+    <aside className="sidebar"><div className="side-top"><div className="side-brand"><div className="brand"><span className="brand-mark"><MessageCircle size={18}/></span> Aerocity</div><button className="icon-btn theme-toggle" type="button" title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"} aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"} aria-pressed={theme === "dark"} onClick={() => setTheme(current => current === "light" ? "dark" : "light")}>{theme === "light" ? <Moon size={17}/> : <Sun size={17}/>}</button></div>
       <div className="search-wrap"><Search size={15}/><input value={search} onChange={e=>{setSearch(e.target.value.replace(/\D/g,"").slice(0,4));setSearchNotice("");}} inputMode="numeric" placeholder="Find by 4-digit user ID" onKeyDown={e=>{if(e.key==="Enter")void searchById();}}/></div>
       {search.length===4 && <button className="small-primary" style={{width:"100%",marginTop:9}} onClick={()=>void searchById()} disabled={searching}>{searching?"Searching…":"Find teammate"}</button>}
       {searchNotice && <div className="notice error" role="status" aria-live="polite" style={{marginTop:9,marginBottom:0}}>{searchNotice}</div>}
